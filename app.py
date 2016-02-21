@@ -1,8 +1,10 @@
 import logging
 
 from dropbox.client import DropboxOAuth2Flow, DropboxClient
-from flask import abort, Flask, redirect, request, render_template, session, url_for
+from flask import abort, Flask, jsonify, redirect, request, render_template, session, url_for
 from secrets import *
+from os.path import basename
+
 from pudb import set_trace
 
 app = Flask(__name__)
@@ -10,7 +12,10 @@ app.secret_key = FLASK_SECRET_KEY
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    if 'access_token' in session:
+        return redirect(url_for('overview'))
+    else:
+        return render_template('index.html')
 
 @app.route('/login')
 def login():
@@ -49,6 +54,40 @@ def overview():
     session['username'] = account['display_name']
 
     return render_template('overview.html', username=session['username'])
+
+@app.route( '/get_filetree')
+def get_filetree():
+    client = DropboxClient(session['access_token'])
+    return jsonify(walk_tree(client, '/', -1))
+
+# if stopdepth is -1, walk_tree will crawl the entire
+# file tree, otherwise it stops after the specified stopdepth 
+def walk_tree(client, path, stopdepth):
+    metadata = client.metadata(path)
+
+    # skeleton output structure
+    node = { 'name': basename(metadata['path'])
+           , 'path': path
+           , 'size': metadata['bytes'] }
+
+    if (stopdepth > 0 or stopdepth == -1) and metadata['is_dir']:
+        cumulative_size = 0
+        node['children'] = []
+        for dirent in metadata['contents']:
+            if dirent['is_dir']:
+                child_node = walk_tree(client, dirent['path'], stopdepth-1)
+                node['children'].append(child_node)
+                cumulative_size += child_node['size']
+            else:
+                child_node = { 'name': basename(dirent['path'])
+                             , 'path': dirent['path']
+                             , 'size': dirent['bytes']
+                             }
+                node['children'].append(child_node)
+                cumulative_size += child_node['size']
+        node['size'] = cumulative_size
+
+    return node
 
 def get_dropbox_auth_flow():
     redirect_uri = url_for('dropbox_auth_finish', _external=True)
