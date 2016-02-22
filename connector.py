@@ -6,6 +6,48 @@ from pudb import set_trace
 def update(user_id, filetree):
     return null
 
+# updates the cursor for the user if applicable
+def set_delta_cursor(user_id, delta_cursor):
+    try:
+        con = mdb.connect( 'localhost'
+                         , MYSQL_USERNAME
+                         , MYSQL_PASSWORD
+                         , MYSQL_DBNAME )
+
+        cur = con.cursor()
+        cur.execute("""UPDATE Users SET cursor = %s WHERE user_id = %s""", (delta_cursor, user_id))
+    except mdb.Error, e:
+        print "Error %d: %s" % (e.args[0],e.args[1])
+        con.rollback()
+        sys.exit(1)
+    finally:
+        if con:
+            con.close()
+
+# returns the cursor for the user if applicable
+# returns None if the user or cursor doesn't exist
+def get_delta_cursor(user_id):
+    try:
+        con = mdb.connect( 'localhost'
+                         , MYSQL_USERNAME
+                         , MYSQL_PASSWORD
+                         , MYSQL_DBNAME )
+
+        cur = con.cursor()
+        cur.execute("""SELECT cursor FROM Users WHERE user_id = %s""", (user_id,))
+        user_cursor = cur.fetchone()
+        if not user_cursor:
+            return None
+        else:
+            return user_cursor
+    except mdb.Error, e:
+        print "Error %d: %s" % (e.args[0],e.args[1])
+        con.rollback()
+        sys.exit(1)
+    finally:
+        if con:
+            con.close()
+
 # if we have a local cache for the user (identified by user_id),
 # return the cache, otherwise return None
 def read(user_id):
@@ -57,6 +99,57 @@ def treeify_h(rows, tab):
     _, root_id, _, _, _, _, _, _, _ = rows[0]
     return tab[root_id]
 
+# deletes the file or folder (and all children) at the given path
+def delete_path(user_id, path):
+    try:
+        con = mdb.connect( 'localhost'
+                         , MYSQL_USERNAME
+                         , MYSQL_PASSWORD
+                         , MYSQL_DBNAME )
+
+        cur = con.cursor()
+
+        # get root_id from User table and delete all corresponding entries in the File and Layout table
+        cur.execute("""SELECT root_id FROM Users WHERE user_id = %s""", (user_id,))
+        root_id = cur.fetchone()
+        if root_id is not None:
+            cur.execute("""DELETE Layout.*, Files.* FROM Layout INNER JOIN Files ON Layout.file_id = Files.id\
+                           WHERE Layout.path LIKE %s""", (path + "%",))
+            con.commit()
+    except mdb.Error, e:
+        print "Error %d: %s" % (e.args[0],e.args[1])
+        con.rollback()
+        sys.exit(1)
+    finally:
+        if con:
+            con.close()
+
+# clears the filetree for a given user
+def clear(user_id):
+    try:
+        con = mdb.connect( 'localhost'
+                         , MYSQL_USERNAME
+                         , MYSQL_PASSWORD
+                         , MYSQL_DBNAME )
+
+        cur = con.cursor()
+
+        # get root_id from User table and delete all corresponding entries in the File and Layout table
+        cur.execute("""SELECT root_id FROM Users WHERE user_id = %s""", (user_id,))
+        root_id = cur.fetchone()
+        if root_id is not None:
+            cur.execute("""DELETE Layout.*, Files.* FROM Layout INNER JOIN Files ON Layout.file_id = Files.id\
+                           WHERE Layout.root_id = %s AND Layout.id <> %s""", (root_id, root_id))
+            con.commit()
+    except mdb.Error, e:
+        print "Error %d: %s" % (e.args[0],e.args[1])
+        con.rollback()
+        sys.exit(1)
+    finally:
+        if con:
+            con.close()
+
+# stores the filetree for a given user
 def store(user_id, file_tree):
     try:
         con = mdb.connect( 'localhost'
@@ -70,7 +163,7 @@ def store(user_id, file_tree):
         root_id = store_tree(cur, file_tree)
 
         # write to user table
-        cur.execute("""INSERT INTO Users(user_id, root_id, delta_cursor) VALUES(%s,%s,%s)""", (user_id, root_id, "NULL"))
+        cur.execute("""INSERT INTO Users(user_id, root_id) VALUES(%s,%s)""", (user_id, root_id))
 
         con.commit()
 

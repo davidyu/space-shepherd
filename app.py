@@ -24,6 +24,8 @@ def login():
 
 @app.route('/logout')
 def logout():
+    if 'access_token' not in session:
+        abort(400)
     session.pop('user_id', None)
     session.pop('username', None)
     session.pop('access_token', None)
@@ -66,6 +68,8 @@ def overview():
 
 @app.route( '/get_filetree')
 def get_filetree():
+    if 'access_token' not in session:
+        abort(400)
     client = DropboxClient(session['access_token'])
     cached_tree = DBC.read(session['user_id'])
     if not cached_tree:
@@ -75,7 +79,20 @@ def get_filetree():
     else:
         return jsonify(cached_tree)
 
-# if stopdepth is -1, walk_tree will crawl the entire
+@app.route( '/update_filetree')
+def update_filetree():
+    if 'access_token' not in session:
+        abort(400)
+    client = DropboxClient(session['access_token'])
+    cursor = DBC.get_delta_cursor(session['user_id'])
+    entries, reset, new_cursor, has_more = client.delta( cursor )
+    if reset:
+        DBC.clear(session['user_id'])
+    for entry in entries:
+        print entry
+    DBC.set_delta_cursor(session['user_id'], new_cursor)
+
+# if stopdepth of -1 is passed in, walk_tree will crawl the entire
 # file tree, otherwise it stops after the specified stopdepth 
 def walk_tree(client, path, stopdepth):
     metadata = client.metadata(path)
