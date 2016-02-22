@@ -20,6 +20,7 @@ def set_delta_cursor(user_id, delta_cursor):
         con = connect()
         cur = con.cursor()
         cur.execute("""UPDATE Users SET delta_cursor = %s WHERE user_id = %s""", (delta_cursor, user_id))
+        con.commit()
     except mdb.Error, e:
         print "Error %d: %s" % (e.args[0],e.args[1])
         con.rollback()

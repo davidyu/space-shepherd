@@ -103,22 +103,23 @@ def update_filetree():
         abort(400)
     client = DropboxClient(session['access_token'])
     user_id = session['user_id']
-    cursor = DBC.get_delta_cursor(user_id)
-    delta = client.delta( cursor )
-    if delta['reset'] is True:
-        DBC.clear(user_id)
-    for entry in delta['entries']:
-        [path, metadata] = entry
-        if not metadata:
-            DBC.delete_path(user_id, path)
-        else:
-            DBC.update_path(user_id, metadata['path'], metadata)
 
-    DBC.set_delta_cursor(user_id, delta['cursor'])
-    
-    # TODO make me a job and push me to a job queue
-    if delta['has_more']:
-        update_filetree()
+    has_more = True
+    while has_more:
+        cursor = DBC.get_delta_cursor(user_id)
+        delta = client.delta(cursor)
+        has_more = delta['has_more']
+
+        if delta['reset'] is True:
+            DBC.clear(user_id)
+        for entry in delta['entries']:
+            [path, metadata] = entry
+            if not metadata:
+                DBC.delete_path(user_id, path)
+            else:
+                DBC.update_path(user_id, metadata['path'], metadata)
+
+        DBC.set_delta_cursor(user_id, delta['cursor'])
 
 # if stopdepth of -1 is passed in, walk_tree will crawl the entire
 # file tree, otherwise it stops after the specified stopdepth 
