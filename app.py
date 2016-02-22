@@ -6,7 +6,7 @@ from secrets import *
 from os.path import basename
 import connector as DBC
 
-# from pudb import set_trace
+from pudb import set_trace
 
 app = Flask(__name__)
 app.secret_key = FLASK_SECRET_KEY
@@ -67,9 +67,13 @@ def overview():
 @app.route( '/get_filetree')
 def get_filetree():
     client = DropboxClient(session['access_token'])
-    tree = walk_tree(client, '/', 2)
-    DBC.store(session['user_id'], tree)
-    return jsonify(tree)
+    cached_tree = DBC.read(session['user_id'])
+    if not cached_tree:
+        tree = walk_tree(client, '/', 2)
+        DBC.store(session['user_id'], tree)
+        return jsonify(tree)
+    else:
+        return jsonify(cached_tree)
 
 # if stopdepth is -1, walk_tree will crawl the entire
 # file tree, otherwise it stops after the specified stopdepth 
@@ -82,7 +86,7 @@ def walk_tree(client, path, stopdepth):
            , 'hash': metadata['hash']
            , 'size': metadata['bytes'] }
 
-    if (stopdepth > 0 or stopdepth == -1) and metadata['is_dir']:
+    if (stopdepth > 0 or stopdepth <= -1) and metadata['is_dir']:
         cumulative_size = 0
         node['children'] = []
         for dirent in metadata['contents']:

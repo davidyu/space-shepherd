@@ -6,11 +6,58 @@ from pudb import set_trace
 def update(user_id, filetree):
     return null
 
+# if we have a local cache for the user (identified by user_id),
+# return the cache, otherwise return None
 def read(user_id):
-    return null
+    try:
+        con = mdb.connect( 'localhost'
+                         , MYSQL_USERNAME
+                         , MYSQL_PASSWORD
+                         , MYSQL_DBNAME )
+
+        cur = con.cursor()
+        cur.execute("""SELECT root_id FROM Users WHERE user_id = %s""", (user_id,))
+        root_id = cur.fetchone()
+        if not root_id:
+            return None
+        else:
+            cur.execute("""SELECT * FROM Layout INNER JOIN Files ON Layout.file_id = Files.id WHERE Layout.root_id = %s""", (root_id,))
+            return treeify(cur.fetchall())
+    except mdb.Error, e:
+        print "Error %d: %s" % (e.args[0],e.args[1])
+        con.rollback()
+        sys.exit(1)
+    finally:
+        if con:
+            con.close()
+
+# treeifies the db cache
+def treeify(rows):
+    return treeify_h(rows, {})
+
+# two passes: builds disconnected nodes first, then constructs the
+# tree structure given the disconnected nodes
+def treeify_h(rows, tab):
+    # build nodes first
+    for row in rows:
+        id, root_id, parent_id, path, file_id, _, hash, name, size = row
+        node = { 'name': name
+               , 'path': path
+               , 'hash': hash
+               , 'size': size }
+        if hash is not None:
+            node['children'] = []
+        tab[id] = node
+    # now build hiearchical tree structure
+    for row in rows:
+        id, _, parent_id, _, _, _, _, _, _ = row
+        if parent_id is not None:
+            tab[parent_id]['children'].append(tab[id])
+    # return the root
+    _, root_id, _, _, _, _, _, _, _ = rows[0]
+    return tab[root_id]
 
 def store(user_id, file_tree):
-    set_trace()
     try:
         con = mdb.connect( 'localhost'
                          , MYSQL_USERNAME
@@ -67,11 +114,13 @@ def store_tree_r(cur, node, parent_id, root_id):
     if is_dir:
         cur.execute("""INSERT INTO Files(hash, name, size) VALUES(%s,%s,%s)""", (node['hash'], node['name'], node['size']))
     else:
-        cur.execute("""INSERT INTO Files(hash, name, size) VALUES(%s,%s,%s)""", ("NULL", node['name'], node['size']))
+        cur.execute("""INSERT INTO Files(name, size) VALUES(%s,%s)""", (node['name'], node['size']))
 
     file_id = cur.lastrowid
-    cur.execute("""INSERT INTO Layout(root_id, path, file_id) VALUES(%s,%s,%s)""", (root_id, node['path'], file_id))
+    cur.execute("""INSERT INTO Layout(root_id, parent_id, path, file_id) VALUES(%s,%s,%s,%s)""", (root_id, parent_id, node['path'], file_id))
+
+    new_parent_id = cur.lastrowid 
 
     if is_dir and 'children' in node:
         for child in node['children']:
-            store_tree_r(cur, child, file_id, root_id)
+            store_tree_r(cur, child, new_parent_id, root_id)
