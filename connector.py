@@ -79,22 +79,21 @@ def treeify(rows):
 def treeify_h(rows, tab):
     # build nodes first
     for row in rows:
-        id, root_id, parent_id, path, file_id, _, is_dir, hash, name, size = row
+        id, root_id, parent_id, path, file_id, _, is_dir, name, size = row
         node = { 'name': name
                , 'is_dir': is_dir
                , 'path': path
-               , 'hash': hash
                , 'size': size }
         if is_dir:
             node['children'] = []
         tab[id] = node
     # now build hiearchical tree structure
     for row in rows:
-        id, _, parent_id, _, _, _, _, _, _, _ = row
+        id, _, parent_id, _, _, _, _, _, _ = row
         if parent_id is not None:
             tab[parent_id]['children'].append(tab[id])
     # return the root
-    _, root_id, _, _, _, _, _, _, _, _ = rows[0]
+    _, root_id, _, _, _, _, _, _, _ = rows[0]
     return tab[root_id]
 
 # basically mkdir -p
@@ -105,7 +104,6 @@ def add_parent_folders(cur, path, root_id):
         if file_id is None:
             # add all parents before me first
             parent_id = add_parent_folders(cur, dirname(path), root_id)
-            # note that we don't have the hash yet, so we'll have to fill it in later
             cur.execute("""INSERT INTO Files(dir, name, size) VALUES(%s,%s,%s)""", (True, basename(path), 0))
             file_id = cur.lastrowid
             cur.execute("""INSERT INTO Layout(path, root_id, parent_id, file_id) VALUES(%s,%s,%s,%s)""", (path, root_id, parent_id, file_id))
@@ -243,7 +241,7 @@ def store_tree(cur, root):
     #    a unique root directory)
     # 2. inserts the root dir into the layout table (and update root_id column after insertion)
     # 3. recursively inserts all children of the root into the file and layout table
-    cur.execute("""INSERT INTO Files(dir, hash, name, size) VALUES(%s,%s,%s,%s)""", (root['is_dir'], root['hash'], root['name'], root['size']))
+    cur.execute("""INSERT INTO Files(dir, name, size) VALUES(%s,%s,%s)""", (root['is_dir'], root['name'], root['size']))
     file_id = cur.lastrowid
 
     cur.execute("""INSERT INTO Layout(path, file_id) VALUES(%s,%s)""", (root['path'], file_id))
@@ -258,15 +256,12 @@ def store_tree(cur, root):
 
 # recursively stores the filetree into the  file table
 # TODO be mindful of preexisting folders (EG: a shared folder)
-
-        # cur.execute("""SELECT id FROM Files WHERE hash = %s""", (node['hash']))
-        # existing_id = cur.fetchone()
-        # if not existing_id:
+# right now all shared folders are blissfully duplicated
 
 def store_tree_r(cur, node, parent_id, root_id):
     is_dir = node['is_dir']
     if is_dir:
-        cur.execute("""INSERT INTO Files(dir, hash, name, size) VALUES(%s,%s,%s,%s)""", (node['is_dir'], node['hash'], node['name'], node['size']))
+        cur.execute("""INSERT INTO Files(dir, name, size) VALUES(%s,%s,%s)""", (node['is_dir'], node['name'], node['size']))
     else:
         cur.execute("""INSERT INTO Files(dir, name, size) VALUES(%s,%s,%s)""", (False, node['name'], node['size']))
 

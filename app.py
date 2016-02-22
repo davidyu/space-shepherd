@@ -68,6 +68,7 @@ def overview():
 
 @app.route( '/get_filetree')
 def get_filetree():
+    set_trace()
     if 'access_token' not in session:
         abort(400)
     client = DropboxClient(session['access_token'])
@@ -97,6 +98,8 @@ def get_filetree_slow():
         return jsonify(cached_tree)
 
 # updates the file tree using Dropbox's delta API
+# if changes were made, return the new tree
+# otherwise, return nothing
 @app.route( '/update_filetree')
 def update_filetree():
     if 'access_token' not in session:
@@ -105,13 +108,20 @@ def update_filetree():
     user_id = session['user_id']
 
     has_more = True
+    cursor = DBC.get_delta_cursor(user_id)
+    changed = False
+
     while has_more:
-        cursor = DBC.get_delta_cursor(user_id)
         delta = client.delta(cursor)
         has_more = delta['has_more']
+        cursor = delta['cursor']
 
         if delta['reset'] is True:
             DBC.clear(user_id)
+
+        if len(delta['entries']) > 0:
+            changed = True
+
         for entry in delta['entries']:
             [path, metadata] = entry
             if not metadata:
@@ -119,7 +129,14 @@ def update_filetree():
             else:
                 DBC.update_path(user_id, metadata['path'], metadata)
 
-        DBC.set_delta_cursor(user_id, delta['cursor'])
+        DBC.set_delta_cursor(user_id, cursor)
+
+    result = { 'changed': changed }
+
+    if changed:
+        result['tree'] = DBC.read(session['user_id'])
+
+    return jsonify(result)
 
 # if stopdepth of -1 is passed in, walk_tree will crawl the entire
 # file tree, otherwise it stops after the specified stopdepth 
@@ -130,7 +147,6 @@ def walk_tree(client, path, stopdepth):
     node = { 'name': basename(metadata['path'])
            , 'is_dir': metadata['is_dir']
            , 'path': path
-           , 'hash': metadata['hash']
            , 'size': metadata['bytes'] }
 
     if (stopdepth > 0 or stopdepth <= -1) and metadata['is_dir']:
@@ -145,7 +161,6 @@ def walk_tree(client, path, stopdepth):
                 child_node = { 'name': basename(dirent['path'])
                              , 'is_dir': dirent['is_dir']
                              , 'path': dirent['path']
-                             , 'hash': None
                              , 'size': dirent['bytes']
                              }
                 node['children'].append(child_node)
