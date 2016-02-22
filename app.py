@@ -4,8 +4,9 @@ from dropbox.client import DropboxOAuth2Flow, DropboxClient
 from flask import abort, Flask, jsonify, redirect, request, render_template, session, url_for
 from secrets import *
 from os.path import basename
+import connector as DBC
 
-from pudb import set_trace
+# from pudb import set_trace
 
 app = Flask(__name__)
 app.secret_key = FLASK_SECRET_KEY
@@ -20,6 +21,13 @@ def index():
 @app.route('/login')
 def login():
     return dropbox_auth_start()
+
+@app.route('/logout')
+def logout():
+    session.pop('user_id', None)
+    session.pop('username', None)
+    session.pop('access_token', None)
+    return redirect(url_for('index'))
 
 @app.route('/dropbox-auth-finish')
 def dropbox_auth_finish():
@@ -39,6 +47,7 @@ def dropbox_auth_finish():
         abort(403)
 
     session['access_token'] = access_token
+    session['user_id'] = user_id
     return redirect(url_for('overview'))
 
 @app.route('/overview')
@@ -58,7 +67,9 @@ def overview():
 @app.route( '/get_filetree')
 def get_filetree():
     client = DropboxClient(session['access_token'])
-    return jsonify(walk_tree(client, '/', -1))
+    tree = walk_tree(client, '/', 2)
+    DBC.store(session['user_id'], tree)
+    return jsonify(tree)
 
 # if stopdepth is -1, walk_tree will crawl the entire
 # file tree, otherwise it stops after the specified stopdepth 
@@ -68,6 +79,7 @@ def walk_tree(client, path, stopdepth):
     # skeleton output structure
     node = { 'name': basename(metadata['path'])
            , 'path': path
+           , 'hash': metadata['hash']
            , 'size': metadata['bytes'] }
 
     if (stopdepth > 0 or stopdepth == -1) and metadata['is_dir']:
@@ -81,6 +93,7 @@ def walk_tree(client, path, stopdepth):
             else:
                 child_node = { 'name': basename(dirent['path'])
                              , 'path': dirent['path']
+                             , 'hash': None
                              , 'size': dirent['bytes']
                              }
                 node['children'].append(child_node)
