@@ -1,3 +1,7 @@
+# the connector module is responsible for communicating with
+# the database to store and read file tree and user data requested
+# by the Space Shepherd app
+
 import MySQLdb as mdb
 import sys
 from os.path import dirname, basename
