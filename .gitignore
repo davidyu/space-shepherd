@@ -1,3 +1,6 @@
 .env
 Flask/
 *.pyc
+*.csr
+*.crt
+*.key

@@ -172,7 +172,7 @@ def walk_tree(client, path, stopdepth):
     return node
 
 def get_dropbox_auth_flow():
-    redirect_uri = url_for('dropbox_auth_finish', _external=True)
+    redirect_uri = url_for('dropbox_auth_finish', _external=True, _scheme='https')
     return DropboxOAuth2Flow( DROPBOX_APP_KEY
                             , DROPBOX_APP_SECRET
                             , redirect_uri
@@ -184,4 +184,5 @@ def dropbox_auth_start():
     return redirect(authorize_url)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=80)
+    context = ('server.crt', 'server.key')
+    app.run(host='0.0.0.0', ssl_context=context)
