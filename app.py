@@ -73,24 +73,52 @@ def get_filetree():
     client = DropboxClient(session['access_token'])
     cached_tree = DBC.read(session['user_id'])
     if not cached_tree:
-        tree = walk_tree(client, '/', 2)
+        # walk only the root level, then use delta API (update_filetree()) for the rest
+        tree = walk_tree(client, '/', 0)
+        DBC.store(session['user_id'], tree)
+        update_filetree()
+        cached_tree = DBC.read(session['user_id'])
+    return jsonify(cached_tree)
+
+# for debug use only
+# uses super-slow walk_tree method for the entire file tree
+# great benchmark for correctness
+@app.route( '/get_filetree_slow')
+def get_filetree_slow():
+    if 'access_token' not in session:
+        abort(400)
+    client = DropboxClient(session['access_token'])
+    cached_tree = DBC.read(session['user_id'])
+    if not cached_tree:
+        tree = walk_tree(client, '/', -1)
         DBC.store(session['user_id'], tree)
         return jsonify(tree)
     else:
         return jsonify(cached_tree)
 
+# updates the file tree using Dropbox's delta API
 @app.route( '/update_filetree')
 def update_filetree():
     if 'access_token' not in session:
         abort(400)
     client = DropboxClient(session['access_token'])
-    cursor = DBC.get_delta_cursor(session['user_id'])
-    entries, reset, new_cursor, has_more = client.delta( cursor )
-    if reset:
-        DBC.clear(session['user_id'])
-    for entry in entries:
-        print entry
-    DBC.set_delta_cursor(session['user_id'], new_cursor)
+    user_id = session['user_id']
+    cursor = DBC.get_delta_cursor(user_id)
+    delta = client.delta( cursor )
+    if delta['reset'] is True:
+        DBC.clear(user_id)
+    for entry in delta['entries']:
+        [path, metadata] = entry
+        if not metadata:
+            DBC.delete_path(user_id, path)
+        else:
+            DBC.update_path(user_id, metadata['path'], metadata)
+
+    DBC.set_delta_cursor(user_id, delta['cursor'])
+    
+    # TODO make me a job and push me to a job queue
+    if delta['has_more']:
+        update_filetree()
 
 # if stopdepth of -1 is passed in, walk_tree will crawl the entire
 # file tree, otherwise it stops after the specified stopdepth 
@@ -99,6 +127,7 @@ def walk_tree(client, path, stopdepth):
 
     # skeleton output structure
     node = { 'name': basename(metadata['path'])
+           , 'is_dir': metadata['is_dir']
            , 'path': path
            , 'hash': metadata['hash']
            , 'size': metadata['bytes'] }
@@ -113,6 +142,7 @@ def walk_tree(client, path, stopdepth):
                 cumulative_size += child_node['size']
             else:
                 child_node = { 'name': basename(dirent['path'])
+                             , 'is_dir': dirent['is_dir']
                              , 'path': dirent['path']
                              , 'hash': None
                              , 'size': dirent['bytes']
