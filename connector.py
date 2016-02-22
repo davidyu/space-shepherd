@@ -40,11 +40,31 @@ def get_delta_cursor(user_id):
         con = connect()
         cur = con.cursor()
         cur.execute("""SELECT delta_cursor FROM Users WHERE user_id = %s""", (user_id,))
-        user_cursor, = cur.fetchone()
-        if not user_cursor:
+        result = cur.fetchone()
+        if not result:
             return None
         else:
+            user_cursor, = result
             return user_cursor
+    except mdb.Error, e:
+        print "Error %d: %s" % (e.args[0],e.args[1])
+        con.rollback()
+        sys.exit(1)
+    finally:
+        if con:
+            con.close()
+
+# returns whether the user exists in our database
+def user_exists(user_id):
+    try:
+        con = connect()
+        cur = con.cursor()
+        cur.execute("""SELECT id FROM Users WHERE user_id = %s""", (user_id,))
+        exists = cur.fetchone()
+        if not exists:
+            return False
+        else:
+            return True
     except mdb.Error, e:
         print "Error %d: %s" % (e.args[0],e.args[1])
         con.rollback()
@@ -60,11 +80,13 @@ def read(user_id):
         con = connect()
         cur = con.cursor()
         cur.execute("""SELECT root_id FROM Users WHERE user_id = %s""", (user_id,))
-        root_id = cur.fetchone()
-        if not root_id:
+        result = cur.fetchone()
+        if not result:
             return None
         else:
-            cur.execute("""SELECT * FROM Layout INNER JOIN Files ON Layout.file_id = Files.id WHERE Layout.root_id = %s""", (root_id,))
+            root_id, = result
+            cur.execute("""SELECT * FROM Layout JOIN Files ON Layout.file_id = Files.id
+                           WHERE Layout.root_id = %s""", (root_id,))
             return treeify(cur.fetchall())
     except mdb.Error, e:
         print "Error %d: %s" % (e.args[0],e.args[1])
@@ -104,8 +126,8 @@ def treeify_h(rows, tab):
 def add_parent_folders(cur, path, root_id):
     if dirname(path) is not path: # while we haven't reached the root (/)
         cur.execute("""SELECT id FROM Layout WHERE path = %s""", (path,))
-        file_id = cur.fetchone()
-        if file_id is None:
+        result = cur.fetchone()
+        if result is None:
             # add all parents before me first
             parent_id = add_parent_folders(cur, dirname(path), root_id)
             cur.execute("""INSERT INTO Files(dir, name, size) VALUES(%s,%s,%s)""", (True, basename(path), 0))
@@ -113,6 +135,7 @@ def add_parent_folders(cur, path, root_id):
             cur.execute("""INSERT INTO Layout(path, root_id, parent_id, file_id) VALUES(%s,%s,%s,%s)""", (path, root_id, parent_id, file_id))
             root_id = cur.lastrowid
         else:
+            file_id, = result
             return file_id
     else:
         return root_id
@@ -128,24 +151,26 @@ def increment_parent_folder_size(cur, path, addition):
     if dirname(path) is not path: # while we haven't reached the root (/)
         increment_parent_folder_size(cur, dirname(path), addition)
 
+# assumes the user exists in our database
 def update_path(user_id, path, metadata):
     try:
         con = connect()
         cur = con.cursor()
 
         cur.execute("""SELECT root_id FROM Users WHERE user_id = %s""", (user_id,))
-        root_id = cur.fetchone()
+        root_id, = cur.fetchone()
 
         # add entries for nonexistent parent folders
         parent_id = add_parent_folders(cur, dirname(path), root_id)
 
         # grab file_id for the file specified at given path (file_id will be None if it doesn't exist)
         cur.execute("""SELECT file_id FROM Layout WHERE path = %s""", (path,))
-        file_id = cur.fetchone()
+        file_id_result = cur.fetchone()
 
         if metadata['is_dir']:
             # new entry is a folder, create it
-            if file_id is not None:
+            if file_id_result is not None:
+                file_id, = file_id_result
                 cur.execute("""UPDATE Files SET dir = %s WHERE id = %s""", (True, file_id))
             else:
                 # does not exist, add folder to layout and file tables
@@ -155,7 +180,7 @@ def update_path(user_id, path, metadata):
         else:
             # new entry is a file, replace local state at path with file
             # then update the sizes for all parents recursively up to the root
-            if file_id is not None:
+            if file_id_result is not None:
                 delete_path(user_id, path)
 
             cur.execute("""INSERT INTO Files(dir, name, size) VALUES(%s,%s,%s)""", (False, basename(path), metadata['bytes']))
@@ -174,6 +199,7 @@ def update_path(user_id, path, metadata):
             con.close()
 
 # deletes the file or folder (and all children) at the given path
+# assumes the user exists in our database
 def delete_path(user_id, path):
     try:
         con = connect()
@@ -181,11 +207,10 @@ def delete_path(user_id, path):
 
         # get root_id from User table and delete all corresponding entries in the File and Layout table
         cur.execute("""SELECT root_id FROM Users WHERE user_id = %s""", (user_id,))
-        root_id = cur.fetchone()
-        if root_id is not None:
-            cur.execute("""DELETE Layout.*, Files.* FROM Layout INNER JOIN Files ON Layout.file_id = Files.id\
-                           WHERE Layout.path LIKE %s""", (path + "%",))
-            con.commit()
+        root_id, = cur.fetchone()
+        cur.execute("""DELETE Layout.*, Files.* FROM Layout INNER JOIN Files ON Layout.file_id = Files.id\
+                       WHERE Layout.path LIKE %s""", (path + "%",))
+        con.commit()
     except mdb.Error, e:
         print "Error %d: %s" % (e.args[0],e.args[1])
         con.rollback()
@@ -195,6 +220,7 @@ def delete_path(user_id, path):
             con.close()
 
 # clears the filetree for a given user
+# assumes the user exists in our database
 def clear(user_id):
     try:
         con = connect()
@@ -202,11 +228,10 @@ def clear(user_id):
 
         # get root_id from User table and delete all corresponding entries in the File and Layout table
         cur.execute("""SELECT root_id FROM Users WHERE user_id = %s""", (user_id,))
-        root_id = cur.fetchone()
-        if root_id is not None:
-            cur.execute("""DELETE Layout.*, Files.* FROM Layout INNER JOIN Files ON Layout.file_id = Files.id\
-                           WHERE Layout.root_id = %s AND Layout.id <> %s""", (root_id, root_id))
-            con.commit()
+        root_id, = cur.fetchone()
+        cur.execute("""DELETE Layout.*, Files.* FROM Layout INNER JOIN Files ON Layout.file_id = Files.id\
+                       WHERE Layout.root_id = %s AND Layout.id <> %s""", (root_id, root_id))
+        con.commit()
     except mdb.Error, e:
         print "Error %d: %s" % (e.args[0],e.args[1])
         con.rollback()

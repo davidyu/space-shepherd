@@ -1,5 +1,5 @@
 .env
-Flask/
+[Ff]lask/
 *.pyc
 *.csr
 *.crt
