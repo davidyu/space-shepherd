@@ -13,15 +13,44 @@
     .hidden-node {
       display: none;
     }
+
+    body {
+      margin: 0;
+    }
   </style>
   <title>Space Shepherd - {{ username }}</title>
   <script src="/static/vendor/d3.js" type="text/javascript"></script>
   <script>
-        var margin = {top: 40, right: 10, bottom: 10, left: 10},
-            width  = 960 - margin.left - margin.right,
-            height = 500 - margin.top - margin.bottom;
+        // http://stackoverflow.com/a/2035211
+        function getViewport() {
+            var viewPortWidth;
+            var viewPortHeight;
 
-        var color = d3.scale.ordinal().range(['#fbb4ae','#b3cde3','#ccebc5','#decbe4','#fed9a6','#ffffcc']);
+            if (typeof window.innerWidth != 'undefined') {
+                viewPortWidth = window.innerWidth,
+                viewPortHeight = window.innerHeight
+            } else if ( typeof document.documentElement != 'undefined' &&
+                        typeof document.documentElement.clientWidth != 'undefined' &&
+                        document.documentElement.clientWidth != 0 ) {
+                // IE6 in standards compliant mode
+                viewPortWidth = document.documentElement.clientWidth,
+                viewPortHeight = document.documentElement.clientHeight
+            } else {
+                // le sigh...
+                viewPortWidth = document.getElementsByTagName('body')[0].clientWidth,
+                viewPortHeight = document.getElementsByTagName('body')[0].clientHeight
+            }
+            return { w: viewPortWidth, h: viewPortHeight };
+        }
+
+        var viewport = getViewport();
+
+        var margin = {top: 100, right: 20, bottom: 20, left: 20},
+            width  = viewport.w - margin.left - margin.right,
+            height = viewport.h - margin.top - margin.bottom;
+
+        // generated via http://colorbrewer2.org/ 
+        var color = d3.scale.ordinal().range(['#fbb4ae','#b3cde3','#ccebc5','#decbe4','#fed9a6','#ffffcc','#8dd3c7','#ffffb3','#bebada','#fb8072','#80b1d3','#fdb462','#b3de69','#fccde5','#d9d9d9','#bc80bd','#ccebc5','#ffed6f']);
 
         var treemap = d3.layout.treemap()
                         .size([width, height])
@@ -37,9 +66,9 @@
 
         function start() {
           div = d3.select("#canvas")
-                  .style("position", "relative")
-                  .style("width", (width + margin.left + margin.right) + "px")
-                  .style("height", (height + margin.top + margin.bottom) + "px")
+                  .style("position", "absolute")
+                  .style("width", width + "px")
+                  .style("height", height + "px")
                   .style("left", margin.left + "px")
                   .style("top", margin.top + "px");
 
@@ -98,8 +127,7 @@
 </head>
 <body onload="start()">
   <div class="main-container">
-      <p><b>{{ username }}'s Dropbox:</b></p>
-      <br/>
+      <p>{{username}}'s Dropbox</p>
       <div id="canvas">
       </div>
   </div>
