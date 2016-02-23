@@ -2,7 +2,7 @@
 <head>
   <style>
     .node {
-      border: solid 1px white;
+      border: solid 1px black;
       font: 10px sans-serif;
       line-height: 12px;
       overflow: hidden;
@@ -21,14 +21,16 @@
             width  = 960 - margin.left - margin.right,
             height = 500 - margin.top - margin.bottom;
 
-        var color = d3.scale.category20c();
+        var color = d3.scale.ordinal().range(['#fbb4ae','#b3cde3','#ccebc5','#decbe4','#fed9a6','#ffffcc']);
 
         var treemap = d3.layout.treemap()
                         .size([width, height])
+                        .padding([15,5,5,5])
+                        .sort(function(a,b) { return a.size - b.size; }) // big to small
                         .sticky(true)
                         .value(function(d) { return d.size; });
 
-        var maxdepth = 1;
+        var maxdepth = 3;
         var curdepth = 0;
 
         var div = null;
@@ -54,14 +56,22 @@
               .style("height", function(d) { return Math.max(0, d.dy - 1) + "px"; });
         }
 
+        function tooSmall(node) {
+            return node.dx * node.dy < 25;
+        }
+
+        function enoughRoomForFileName(node) {
+            return node.dx > 30 && node.dy > 18;
+        }
+
         function draw_tree(root) {
           var node = div.datum(root).selectAll(".node")
               .data(treemap.nodes)
               .enter().append("div")
-              .attr("class", function(d) { return d.depth > maxdepth ? "hidden-node" : "node"; } )
+              .attr("class", function(d) { return tooSmall(d) || d.depth > maxdepth ? "hidden-node" : "node"; } )
               .call(position)
-              .style("background", function(d) { return d.children ? color(d.name) : null; })
-              .text(function(d) { return d.name; });
+              .style("background", function(d) { return color(d.depth); })
+              .text(function(d) { return enoughRoomForFileName(d) ? d.name : null; });
 
           d3.selectAll("input").on("change", function change() {
             var value = this.value === "count"

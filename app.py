@@ -68,6 +68,23 @@ def overview():
 
     return render_template('overview.html', username=session['username'])
 
+# prunes the given tree to be at most maxdepth levels
+def prune(tree, maxdepth):
+    return prune_r(tree, maxdepth, 1)
+
+def prune_r(node, maxdepth, curdepth):
+    if curdepth >= maxdepth:
+        if 'children' in node:
+            node.pop('children', None)
+    else:
+        if 'children' in node:
+            for child in node['children']:
+                prune_r(child, maxdepth, curdepth+1)
+
+    return node
+
+MAX_DIRECTORY_DEPTH = 4
+
 @app.route( '/get_filetree')
 def get_filetree():
     if 'access_token' not in session:
@@ -78,7 +95,7 @@ def get_filetree():
         tree = crawl_all_deltas(client)
         DBC.store(session['user_id'], tree)
         cached_tree = tree
-    return jsonify(cached_tree)
+    return jsonify(prune(cached_tree, MAX_DIRECTORY_DEPTH))
 
 # updates the file tree using Dropbox's delta API
 # if changes were made, return the new tree
