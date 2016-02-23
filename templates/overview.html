@@ -11,6 +11,12 @@
     }
 
     .folder {
+      /* subtle thin pixel bevel edge */
+      box-shadow:
+        rgba(256,256,256,0.35)
+        0px 1px 0 /* topmost pixel only */
+        0px /* spread */
+        inset;
       white-space: nowrap;
     }
 
