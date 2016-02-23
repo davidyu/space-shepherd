@@ -112,6 +112,10 @@
             return tooltip.html(node.name + "<br/>" + humanFileSize(node.size) + "<br/>" + (isRoot(node) ? "Root" : percentageOfOccupiedSpace(node)) + "<br/>" + ( node.is_dir ? "Folder<br/>" : "" ) )
                           .style("visibility", "visible");
         }
+        
+        function moveToolTip() {
+            return tooltip.style("top", (event.pageY-10) + "px").style("left",(event.pageX+10) + "px");
+        }
 
         function start() {
           div = d3.select("#canvas")
@@ -160,16 +164,17 @@
             }
         }
 
+        treemap_node = null;
         function draw_tree(root) {
-          var node = div.datum(root).selectAll(".node")
+          treemap_node = div.datum(root).selectAll(".node")
               .data(treemap.nodes)
               .enter().append("div")
-              .attr("class", function(d) { return computeClass(d); } )
+              .attr("class", computeClass)
               .call(position)
               .style("background", function(d) { return color(d.depth); })
               .text(function(d) { return enoughRoomForFileName(d) ? d.name : null; })
               .on("mouseover", updateAndShowToolTip)
-              .on("mousemove", function(){return tooltip.style("top", (event.pageY-10)+"px").style("left",(event.pageX+10)+"px");})
+              .on("mousemove", moveToolTip)
               .on("mouseout", function(){return tooltip.style("visibility", "hidden");});
 
           d3.selectAll("input").on("change", function change() {
@@ -177,20 +182,38 @@
                 ? function() { return 1; }
                 : function(d) { return d.size; };
 
-            node
-                .data(treemap.value(value).nodes)
+            treemap_node.data(treemap.value(value).nodes)
                 .transition()
                 .duration(1500)
                 .call(position)
-
-            node.exit().remove();
           });
+        }
+
+        function update_tree(root) {
+            treemap_node = div.datum(root)
+                              .selectAll(".node")
+                              .data(treemap.nodes)
+                              .enter().append("div")
+                              .attr("class", computeClass)
+                              .style("background", function(d) { return color(d.depth); })
+                              .text(function(d) { return enoughRoomForFileName(d) ? d.name : null; })
+                              .call(position)
+                              .on("mouseover", updateAndShowToolTip)
+                              .on("mousemove", moveToolTip)
+                              .on("mouseout", function(){return tooltip.style("visibility", "hidden");});
+
+            treemap_node
+                .transition()
+                .duration(500)
+                .call(position)
+                .style("background", function(d) { return color(d.depth); })
+                .text(function(d) { return enoughRoomForFileName(d) ? d.name : null; })
         }
 
         function update() {
             d3.json("/update_filetree", function(error, data) {
-              if (error) throw error;
-              if (data.changed) draw_tree(data.tree);
+                if (error) throw error;
+              if (data.changed) update_tree(data.tree);
             });
         }
   </script>
