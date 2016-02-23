@@ -20,10 +20,19 @@
       white-space: nowrap;
     }
 
+    .d3-tip {
+      font: 10px sans-serif;
+      line-height: 1;
+      padding: 12px;
+      background: rgba(0, 0, 0, 0.8);
+      color: #fff;
+      border-radius: 2px;
+    }
+
     .hidden-node {
       display: none;
     }
-
+    
     body {
       margin: 0;
     }
@@ -31,6 +40,21 @@
   <title>Space Shepherd - {{ username }}</title>
   <script src="/static/vendor/d3.js" type="text/javascript"></script>
   <script>
+        // http://stackoverflow.com/a/14919494
+        function humanFileSize(bytes, si) {
+            var thresh = si ? 1000 : 1024;
+            if(Math.abs(bytes) < thresh) {
+                return bytes + ' B';
+            }
+            var units = ['kB','MB','GB','TB','PB','EB','ZB','YB'];
+            var u = -1;
+            do {
+                bytes /= thresh;
+                ++u;
+            } while(Math.abs(bytes) >= thresh && u < units.length - 1);
+            return bytes.toFixed(1)+' '+units[u];
+        }
+
         // http://stackoverflow.com/a/2035211
         function getViewport() {
             var viewPortWidth;
@@ -73,6 +97,12 @@
         var curdepth = 0;
 
         var div = null;
+        var tooltip = null;
+
+        function updateAndShowToolTip(node) {
+            return tooltip.html(node.name + "<br/>" + humanFileSize(node.size) + "<br/>" + ( node.is_dir ? "Folder<br/>" : "" ) )
+                          .style("visibility", "visible");
+        }
 
         function start() {
           div = d3.select("#canvas")
@@ -86,6 +116,13 @@
             if (error) throw error;
             draw_tree(tree);
           });
+
+          tooltip = d3.select("body")
+              .append("div")
+              .style("position", "absolute")
+              .style("z-index", "10")
+              .style("visibility", "hidden")
+              .attr("class", "d3-tip")
         }
 
         function position() {
@@ -120,7 +157,10 @@
               .attr("class", function(d) { return computeClass(d); } )
               .call(position)
               .style("background", function(d) { return color(d.depth); })
-              .text(function(d) { return enoughRoomForFileName(d) ? d.name : null; });
+              .text(function(d) { return enoughRoomForFileName(d) ? d.name : null; })
+              .on("mouseover", updateAndShowToolTip)
+              .on("mousemove", function(){return tooltip.style("top", (event.pageY-10)+"px").style("left",(event.pageX+10)+"px");})
+              .on("mouseout", function(){return tooltip.style("visibility", "hidden");});
 
           d3.selectAll("input").on("change", function change() {
             var value = this.value === "count"
@@ -131,7 +171,7 @@
                 .data(treemap.value(value).nodes)
                 .transition()
                 .duration(1500)
-                .call(position);
+                .call(position)
 
             node.exit().remove();
           });
