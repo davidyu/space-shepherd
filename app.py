@@ -5,7 +5,7 @@ import logging
 from dropbox.client import DropboxOAuth2Flow, DropboxClient
 from flask import abort, Flask, jsonify, redirect, request, render_template, session, url_for
 from secrets import *
-from os.path import basename
+from os.path import dirname, basename
 import connector as DBC
 
 from pudb import set_trace
@@ -70,34 +70,15 @@ def overview():
 
 @app.route( '/get_filetree')
 def get_filetree():
-    # set_trace()
     if 'access_token' not in session:
         abort(400)
     client = DropboxClient(session['access_token'])
     cached_tree = DBC.read(session['user_id'])
     if not cached_tree:
-        # walk only the root level, then use delta API (update_filetree()) for the rest
-        tree = walk_tree(client, '/', 0)
+        tree = crawl_all_deltas(client)
         DBC.store(session['user_id'], tree)
-        update_filetree()
-        cached_tree = DBC.read(session['user_id'])
+        cached_tree = tree
     return jsonify(cached_tree)
-
-# for debug use only
-# uses super-slow walk_tree method for the entire file tree
-# great benchmark for correctness
-@app.route( '/get_filetree_slow')
-def get_filetree_slow():
-    if 'access_token' not in session:
-        abort(400)
-    client = DropboxClient(session['access_token'])
-    cached_tree = DBC.read(session['user_id'])
-    if not cached_tree:
-        tree = walk_tree(client, '/', -1)
-        DBC.store(session['user_id'], tree)
-        return jsonify(tree)
-    else:
-        return jsonify(cached_tree)
 
 # updates the file tree using Dropbox's delta API
 # if changes were made, return the new tree
@@ -139,37 +120,91 @@ def update_filetree():
         result['tree'] = DBC.read(session['user_id'])
 
     return jsonify(result)
-
-# if stopdepth of -1 is passed in, walk_tree will crawl the entire
-# file tree, otherwise it stops after the specified stopdepth 
-def walk_tree(client, path, stopdepth):
-    metadata = client.metadata(path)
+    
+# crawls all deltas for the given client starting from
+# the beginning. Do this in memory using a dictionary
+# and write the results into the database at the end
+def crawl_all_deltas(client):
+    metadata = client.metadata('/')
 
     # skeleton output structure
-    node = { 'name': basename(metadata['path'])
+    root = { 'name': '/'
            , 'is_dir': metadata['is_dir']
-           , 'path': path
-           , 'size': metadata['bytes'] }
+           , 'path': '/'
+           , 'size': metadata['bytes']
+           , 'children' : [] }
 
-    if (stopdepth > 0 or stopdepth <= -1) and metadata['is_dir']:
-        cumulative_size = 0
-        node['children'] = []
-        for dirent in metadata['contents']:
-            if dirent['is_dir']:
-                child_node = walk_tree(client, dirent['path'], stopdepth-1)
-                node['children'].append(child_node)
-                cumulative_size += child_node['size']
+    tab = {}
+    tab['/'] = root
+
+    # adds parent folders to the table, if necessary
+    def add_parent_folders(path, preserved_path):
+        if dirname(path) is not path: # while we haven't reached the root (/)
+            if path in tab:
+                return tab[path]
             else:
-                child_node = { 'name': basename(dirent['path'])
-                             , 'is_dir': dirent['is_dir']
-                             , 'path': dirent['path']
-                             , 'size': dirent['bytes']
-                             }
-                node['children'].append(child_node)
-                cumulative_size += child_node['size']
-        node['size'] = cumulative_size
+                parent = add_parent_folders(dirname(path), dirname(preserved_path))
+                fold = { 'name': basename(preserved_path)
+                       , 'is_dir': True
+                       , 'path': preserved_path
+                       , 'size': 0
+                       , 'children' : [] }
+                tab[path] = fold
+                parent['children'].append(fold)
+                return fold
+        else:
+            return tab['/']
 
-    return node
+    # increments the parent folder size by some given bytes
+    def increment_parent_folder_size(parent_path, addition):
+        tab[parent_path]['size'] += addition
+        if dirname(parent_path) is not parent_path: # while we haven't reached the root (/)
+            increment_parent_folder_size(dirname(parent_path), addition)
+
+    has_more = True
+    cursor = None
+    changed = False
+
+    while has_more:
+        delta = client.delta(cursor)
+        has_more = delta['has_more']
+        cursor = delta['cursor']
+
+        if delta['reset'] is True:
+            root = { 'name': '/'
+                   , 'is_dir': metadata['is_dir']
+                   , 'path': '/'
+                   , 'size': metadata['bytes']
+                   , 'children' : [] }
+
+            tab = {}
+            tab['/'] = root
+
+        for entry in delta['entries']:
+            [lowercase_path, metadata] = entry
+
+            parent = add_parent_folders(dirname(lowercase_path), dirname(metadata['path']))
+            if metadata is None:
+                tab.pop( lowercase_path, None )
+                d = lowercase_path + '/'
+                for p in tab.keys():
+                    if p.startswith( d ):
+                        del tab[p]
+            else:
+                node = { 'name': basename(metadata['path'])
+                       , 'is_dir': metadata['is_dir']
+                       , 'path': metadata['path']
+                       , 'size': metadata['bytes'] }
+
+                if node['is_dir']:
+                    node['children'] = []
+                else:
+                    increment_parent_folder_size(dirname(lowercase_path), node['size'])
+
+                tab[lowercase_path] = node
+                parent['children'].append(node)
+
+    return tab['/']
 
 def get_dropbox_auth_flow():
     redirect_uri = url_for('dropbox_auth_finish', _external=True, _scheme='https')
