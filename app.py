@@ -135,7 +135,7 @@ def update_filetree():
     result = { 'changed': changed }
 
     if changed:
-        result['tree'] = DBC.read(session['user_id'])
+        result['tree'] = prune(DBC.read(session['user_id']), MAX_DIRECTORY_DEPTH)
 
     return jsonify(result)
     
