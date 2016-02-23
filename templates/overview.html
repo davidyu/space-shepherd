@@ -28,7 +28,7 @@
                         .sticky(true)
                         .value(function(d) { return d.size; });
 
-        var maxdepth = 4;
+        var maxdepth = 1;
         var curdepth = 0;
 
         var div = null;
@@ -61,7 +61,7 @@
               .attr("class", function(d) { return d.depth > maxdepth ? "hidden-node" : "node"; } )
               .call(position)
               .style("background", function(d) { return d.children ? color(d.name) : null; })
-              .text(function(d) { return d.children ? null : d.name; });
+              .text(function(d) { return d.name; });
 
           d3.selectAll("input").on("change", function change() {
             var value = this.value === "count"
