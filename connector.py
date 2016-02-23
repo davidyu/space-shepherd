@@ -145,13 +145,13 @@ def add_parent_folders(cur, path, root_id):
 # increments the parent folder size by some given number
 # assumes entries for all parent folders in path exist (IE:
 # we called add_parent_folders for path)
-def increment_parent_folder_size(cur, path, addition):
+def adjust_parent_folder_size(cur, path, delta):
     cur.execute("""UPDATE Files
                    INNER JOIN Layout ON Layout.file_id = Files.id\
                     SET Files.size = Files.size + %s\
-                   WHERE Layout.path = %s""", (addition, path))
+                   WHERE Layout.path = %s""", (delta, path))
     if dirname(path) is not path: # while we haven't reached the root (/)
-        increment_parent_folder_size(cur, dirname(path), addition)
+        adjust_parent_folder_size(cur, dirname(path), delta)
 
 # assumes the user exists in our database
 def update_path(user_id, path, metadata):
@@ -189,7 +189,7 @@ def update_path(user_id, path, metadata):
             file_id = cur.lastrowid
             cur.execute("""INSERT INTO Layout(path, root_id, parent_id, file_id) VALUES(%s,%s,%s,%s)""", (path, root_id, parent_id, file_id))
 
-            increment_parent_folder_size(cur, dirname(path), metadata['bytes'])
+            adjust_parent_folder_size(cur, dirname(path), metadata['bytes'])
 
         con.commit()
     except mdb.Error, e:
@@ -210,8 +210,18 @@ def delete_path(user_id, path):
         # get root_id from User table and delete all corresponding entries in the File and Layout table
         cur.execute("""SELECT root_id FROM Users WHERE user_id = %s""", (user_id,))
         root_id, = cur.fetchone()
+        
+        # decrement size of parent folders
+        cur.execute("""SELECT File.size FROM Layout INNER JOIN Files ON Layout.file_id = Files.id\
+                       WHERE Layout.root_id = %s AND Layout.path = %s""", (path,))
+        size_result = cur.fetchone()
+
+        if size_result:
+            deleted_size, = size_result
+            adjust_parent_folder_size(cur, dirname(path), -deleted_size)
+
         cur.execute("""DELETE Layout.*, Files.* FROM Layout INNER JOIN Files ON Layout.file_id = Files.id\
-                       WHERE Layout.path LIKE %s""", (path + "%",))
+                       WHERE Layout.root_id = %s AND Layout.path LIKE %s""", (path + "%",))
         con.commit()
     except mdb.Error, e:
         print "Error %d: %s" % (e.args[0],e.args[1])

@@ -125,7 +125,7 @@ def update_filetree():
 
         for entry in delta['entries']:
             [path, metadata] = entry
-            if not metadata:
+            if metadata is None:
                 DBC.delete_path(user_id, path)
             else:
                 DBC.update_path(user_id, metadata['path'], metadata)
@@ -167,7 +167,7 @@ def crawl_all_deltas(client):
                        , 'is_dir': True
                        , 'path': preserved_path
                        , 'size': 0
-                       , 'id': crc32(crc32(preserved_path.encode('utf-8')))
+                       , 'id': crc32(preserved_path.encode('utf-8'))
                        , 'children' : [] }
                 tab[path] = fold
                 parent['children'].append(fold)
@@ -176,10 +176,10 @@ def crawl_all_deltas(client):
             return tab['/']
 
     # increments the parent folder size by some given bytes
-    def increment_parent_folder_size(parent_path, addition):
-        tab[parent_path]['size'] += addition
+    def adjust_parent_folder_size(parent_path, delta):
+        tab[parent_path]['size'] += delta
         if dirname(parent_path) is not parent_path: # while we haven't reached the root (/)
-            increment_parent_folder_size(dirname(parent_path), addition)
+            adjust_parent_folder_size(dirname(parent_path), delta)
 
     has_more = True
     cursor = None
@@ -206,11 +206,13 @@ def crawl_all_deltas(client):
 
             parent = add_parent_folders(dirname(lowercase_path), dirname(metadata['path']))
             if metadata is None:
-                tab.pop( lowercase_path, None )
+                deleted = tab.pop( lowercase_path, None )
                 d = lowercase_path + '/'
                 for p in tab.keys():
                     if p.startswith( d ):
                         del tab[p]
+                if deleted is not None:
+                    adjust_parent_folder_size(dirname(lowercase_path), -deleted['size'])
             else:
                 node = { 'name': basename(metadata['path'])
                        , 'is_dir': metadata['is_dir']
@@ -221,7 +223,7 @@ def crawl_all_deltas(client):
                 if node['is_dir']:
                     node['children'] = []
                 else:
-                    increment_parent_folder_size(dirname(lowercase_path), node['size'])
+                    adjust_parent_folder_size(dirname(lowercase_path), node['size'])
 
                 tab[lowercase_path] = node
                 parent['children'].append(node)
