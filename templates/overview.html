@@ -96,11 +96,20 @@
         var maxdepth = 3;
         var curdepth = 0;
 
+        var filetree = null;
         var div = null;
         var tooltip = null;
 
+        function percentageOfOccupiedSpace(node) {
+            return (node.size * 100 / filetree.size).toFixed(1) + '% of total occupied space';
+        }
+
+        function isRoot(node) {
+            return node.name == '/';
+        }
+
         function updateAndShowToolTip(node) {
-            return tooltip.html(node.name + "<br/>" + humanFileSize(node.size) + "<br/>" + ( node.is_dir ? "Folder<br/>" : "" ) )
+            return tooltip.html(node.name + "<br/>" + humanFileSize(node.size) + "<br/>" + (isRoot(node) ? "Root" : percentageOfOccupiedSpace(node)) + "<br/>" + ( node.is_dir ? "Folder<br/>" : "" ) )
                           .style("visibility", "visible");
         }
 
@@ -114,6 +123,7 @@
 
           d3.json("/get_filetree", function(error, tree) {
             if (error) throw error;
+            filetree = tree;
             draw_tree(tree);
           });
 
