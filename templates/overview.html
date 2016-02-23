@@ -10,6 +10,10 @@
       text-indent: 2px;
     }
 
+    .folder {
+      white-space: nowrap;
+    }
+
     .hidden-node {
       display: none;
     }
@@ -86,18 +90,28 @@
         }
 
         function tooSmall(node) {
-            return node.dx * node.dy < 25;
+            return node.dx < 3 || node.dy < 3 || node.dx * node.dy < 10;
         }
 
         function enoughRoomForFileName(node) {
             return node.dx > 30 && node.dy > 18;
         }
 
+        function computeClass(node) {
+            if (tooSmall(node) || node.depth > maxdepth) {
+                return "hidden-node";
+            } else if (node.is_dir) {
+                return "folder node"
+            } else {
+                return "node";
+            }
+        }
+
         function draw_tree(root) {
           var node = div.datum(root).selectAll(".node")
               .data(treemap.nodes)
               .enter().append("div")
-              .attr("class", function(d) { return tooSmall(d) || d.depth > maxdepth ? "hidden-node" : "node"; } )
+              .attr("class", function(d) { return computeClass(d); } )
               .call(position)
               .style("background", function(d) { return color(d.depth); })
               .text(function(d) { return enoughRoomForFileName(d) ? d.name : null; });
