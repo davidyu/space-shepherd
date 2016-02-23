@@ -6,6 +6,7 @@ from dropbox.client import DropboxOAuth2Flow, DropboxClient
 from flask import abort, Flask, jsonify, redirect, request, render_template, session, url_for
 from secrets import *
 from os.path import dirname, basename
+from zlib import crc32
 import connector as DBC
 
 from pudb import set_trace
@@ -149,6 +150,7 @@ def crawl_all_deltas(client):
            , 'is_dir': metadata['is_dir']
            , 'path': '/'
            , 'size': metadata['bytes']
+           , 'id': crc32('/')
            , 'children' : [] }
 
     tab = {}
@@ -165,6 +167,7 @@ def crawl_all_deltas(client):
                        , 'is_dir': True
                        , 'path': preserved_path
                        , 'size': 0
+                       , 'id': crc32(crc32(preserved_path.encode('utf-8')))
                        , 'children' : [] }
                 tab[path] = fold
                 parent['children'].append(fold)
@@ -192,6 +195,7 @@ def crawl_all_deltas(client):
                    , 'is_dir': metadata['is_dir']
                    , 'path': '/'
                    , 'size': metadata['bytes']
+                   , 'id': crc32('/')
                    , 'children' : [] }
 
             tab = {}
@@ -211,6 +215,7 @@ def crawl_all_deltas(client):
                 node = { 'name': basename(metadata['path'])
                        , 'is_dir': metadata['is_dir']
                        , 'path': metadata['path']
+                       , 'id': crc32(metadata['path'].encode('utf-8'))
                        , 'size': metadata['bytes'] }
 
                 if node['is_dir']:
