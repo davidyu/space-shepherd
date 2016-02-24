@@ -92,6 +92,7 @@ def get_filetree():
     client = DropboxClient(session['access_token'])
     cached_tree = DBC.read(session['user_id'])
     if not cached_tree:
+        set_trace()
         tree, cursor = crawl_all_deltas(client)
         DBC.store(session['user_id'], tree, cursor)
         cached_tree = tree
@@ -155,18 +156,18 @@ def crawl_all_deltas(client):
     tab['/'] = root
 
     # adds parent folders to the table, if necessary
-    def add_parent_folders(path, preserved_path):
-        if dirname(path) is not path: # while we haven't reached the root (/)
-            if path in tab:
-                return tab[path]
+    def add_parent_folders(lowercase_path, preserved_path):
+        if dirname(lowercase_path) is not lowercase_path: # while we haven't reached the root (/)
+            if lowercase_path in tab:
+                return tab[lowercase_path]
             else:
-                parent = add_parent_folders(dirname(path), dirname(preserved_path))
+                parent = add_parent_folders(dirname(lowercase_path), dirname(preserved_path))
                 fold = { 'name': basename(preserved_path)
                        , 'is_dir': True
                        , 'path': preserved_path
                        , 'size': 0
                        , 'children' : [] }
-                tab[path] = fold
+                tab[lowercase_path] = fold
                 parent['children'].append(fold)
                 return fold
         else:
@@ -200,7 +201,6 @@ def crawl_all_deltas(client):
         for entry in delta['entries']:
             [lowercase_path, metadata] = entry
 
-            parent = add_parent_folders(dirname(lowercase_path), dirname(metadata['path']))
             if metadata is None:
                 deleted = tab.pop( lowercase_path, None )
                 d = lowercase_path + '/'
@@ -210,18 +210,47 @@ def crawl_all_deltas(client):
                 if deleted is not None:
                     adjust_parent_folder_size(dirname(lowercase_path), -deleted['size'])
             else:
+                parent = add_parent_folders(dirname(lowercase_path), dirname(metadata['path']))
+
                 node = { 'name': basename(metadata['path'])
                        , 'is_dir': metadata['is_dir']
                        , 'path': metadata['path']
                        , 'size': metadata['bytes'] }
 
                 if node['is_dir']:
-                    node['children'] = []
-                else:
-                    adjust_parent_folder_size(dirname(lowercase_path), node['size'])
-
-                tab[lowercase_path] = node
-                parent['children'].append(node)
+                    if lowercase_path in tab:
+                        if tab[lowercase_path]['is_dir']:
+                            # just copy the metadata that (potentially) changed
+                            tab[lowercase_path]['name'] = node['name']
+                            tab[lowercase_path]['path'] = node['path']
+                        else:
+                            # replace the file with me
+                            adjust_parent_folder_size(dirname(lowercase_path), -tab[lowercase_path]['size'])
+                            tab[lowercase_path]['name'] = node['name']
+                            tab[lowercase_path]['is_dir'] = True
+                            tab[lowercase_path]['size'] = 0
+                            tab[lowercase_path]['path'] = node['path']
+                            tab[lowercase_path]['children'] = []
+                    else:
+                        # add me to the tree and table
+                        # we have a size of 0 so no need to adjust parent folder size
+                        parent['children'].append(node)
+                        tab[lowercase_path] = node
+                        tab[lowercase_path]['children'] = []
+                else: # we're a file
+                    if lowercase_path in tab:
+                        # replace whatever existed at path with me
+                        adjust_parent_folder_size(dirname(lowercase_path), -tab[lowercase_path]['size'])
+                        tab[lowercase_path]['name'] = node['name']
+                        tab[lowercase_path]['is_dir'] = False
+                        tab[lowercase_path]['size'] = node['size']
+                        tab[lowercase_path]['path'] = node['path']
+                        adjust_parent_folder_size(dirname(lowercase_path), node['size'])
+                    else:
+                        # add me to the tree and table
+                        parent['children'].append(node)
+                        tab[lowercase_path] = node
+                        adjust_parent_folder_size(dirname(lowercase_path), node['size'])
 
     return tab['/'], cursor
 
