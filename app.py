@@ -86,7 +86,7 @@ def prune_r(node, maxdepth, curdepth):
 
 MAX_DIRECTORY_DEPTH = 4
 
-@app.route( '/get_filetree')
+@app.route('/get_filetree')
 def get_filetree():
     if 'access_token' not in session:
         abort(400)
@@ -101,7 +101,7 @@ def get_filetree():
 # updates the file tree using Dropbox's delta API
 # if changes were made, return the new tree
 # otherwise, return nothing
-@app.route( '/update_filetree')
+@app.route('/update_filetree')
 def update_filetree():
     if 'access_token' not in session:
         abort(400)
@@ -130,8 +130,8 @@ def update_filetree():
             else:
                 DBC.update_path(user_id, metadata['path'], metadata)
 
-        DBC.set_delta_cursor(user_id, cursor)
 
+    DBC.set_delta_cursor(user_id, cursor)
     result = { 'changed': changed }
 
     if changed:
@@ -175,10 +175,10 @@ def crawl_all_deltas(client):
         else:
             return tab['/']
 
-    # increments the parent folder size by some given bytes
     def adjust_parent_folder_size(parent_path, delta):
         tab[parent_path]['size'] += delta
-        if dirname(parent_path) is not parent_path: # while we haven't reached the root (/)
+        # recursively adjust parent sizes until we reach root (/)
+        if dirname(parent_path) is not parent_path:
             adjust_parent_folder_size(dirname(parent_path), delta)
 
     has_more = True
