@@ -18,6 +18,18 @@
       white-space: nowrap;
     }
 
+    .folder:hover {
+      /* subtly accentuate bevels */
+      box-shadow: rgba(256,256,256,0.5) 2px 2px 0 0px inset, rgba(0,0,0,0.1) -2px -2px 0 0px inset;
+    }
+
+    .folder:active {
+      /* invert bevels for depressed look */
+      box-shadow: rgba(256,256,256,0.5) -2px -2px 0 0px inset, rgba(0,0,0,0.1) 2px 2px 0 0px inset;
+      text-indent: 3px;
+      padding-top: 1px;
+    }
+
     .d3-tip {
       font: 10px sans-serif;
       line-height: 1;
