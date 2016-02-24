@@ -219,6 +219,28 @@
               .on("mouseover", updateAndShowToolTip)
               .on("mousemove", moveToolTip)
               .on("mouseout", function(){return tooltip.style("visibility", "hidden");});
+
+            window.addEventListener('resize', resizeAfterDelay);
+        }
+
+        // we want to resize at the end or after the user hasn't touched the window in a while
+        // this is to prevent calls to update_tree multiple times per second, which is expensive
+        var queuedResizeId;
+        function resizeAfterDelay(e) {
+            clearTimeout(queuedResizeId);
+            queuedResizeId = setTimeout(resizeWindow, 500);
+        }
+
+        function resizeWindow() {
+          viewport = getViewport();
+          width  = viewport.w - margin.left - margin.right,
+          height = viewport.h - margin.top - margin.bottom;
+
+          div.style("width", width + "px")
+             .style("height", height + "px");
+
+          treemap.size([width, height]);
+          update_tree(filetree);
         }
 
         function update_tree(root) {
