@@ -54,6 +54,7 @@
     }
 
     .header-content-wrapper {
+        display: table;
         max-width: calc(100% - (30px * 2));
         margin-right: auto;
         margin-left: auto;
@@ -83,6 +84,23 @@
         text-align: center;
         height: 100px;
         width: 70%;
+    }
+
+    #quota-bar-container {
+        display: table-cell;
+        vertical-align: middle;
+        border: solid 1px black;
+        width: 60px;
+        height: 10px;
+        margin-left: 10px;
+        margin-right: 10px;
+        display: inline-block;
+    }
+
+    #quota-bar {
+        box-shadow: rgba(256,256,256,0.5) 1px 1px 0 0px inset, rgba(0,0,0,0.05) -1px -1px 0 0px inset;
+        height: 100%;
+        display: block;
     }
   </style>
   <title>Space Shepherd - {{ username }}</title>
@@ -133,6 +151,7 @@
 
         // generated via http://colorbrewer2.org/ 
         var color = d3.scale.ordinal().range(['#fbb4ae','#b3cde3','#ccebc5','#decbe4','#fed9a6','#ffffcc','#8dd3c7','#ffffb3','#bebada','#fb8072','#80b1d3','#fdb462','#b3de69','#fccde5','#d9d9d9','#bc80bd','#ccebc5','#ffed6f']);
+        var quotaColor = d3.scale.linear().domain([0,0.5,1]).range(['#008E09', '#FFBF00', '#FF0303'])/*.rangePoints([0,1]) */;
 
         var treemap = d3.layout.treemap()
                         .size([width, height])
@@ -147,7 +166,7 @@
         var div = null;
         var tooltip = null;
 
-        var userQuota = { total: 0, used: 0 };
+        var userQuota = { total: 1, used: 0 };
 
         function percentageOfOccupiedSpace(node) {
             return (node.size * 100 / filetree.size).toFixed(1) + '% of total occupied space';
@@ -199,6 +218,7 @@
             filetree = data.tree;
             userQuota.used = data.used;
             userQuota.total = data.total;
+            updateQuotaBar();
             draw_tree(data.tree);
             window.setInterval( poll, 3000 );
           });
@@ -311,6 +331,15 @@
               .text(function(d) { return enoughRoomForFileName(d) ? d.name : null; })
         }
 
+        function updateQuotaBar() {
+            var quotaBar = document.getElementById("quota-bar");
+            if (quotaBar) {
+                var usage = Math.min(userQuota.used / userQuota.total, 1);
+                quotaBar.style["width"] = (usage * 100) + "%";
+                quotaBar.style["background-color"] = quotaColor(usage);
+            }
+        }
+
         var waitingForPollResponse = false;
         function poll() {
             if ( waitingForPollResponse ) return;
@@ -322,6 +351,7 @@
                     filetree = data.tree;
                     userQuota.used = data.used;
                     userQuota.total = data.total;
+                    updateQuotaBar();
                     update_tree(data.tree);
                 }
             });
@@ -333,7 +363,9 @@
         <div class="header-content-wrapper">
             <span class="title">Space Shepherd</span>
             <nav class="user-panel">
-                {{username}} &nbsp; <a href="/logout">Log Out</a>
+                {{username}} &nbsp;
+                <div id="quota-bar-container"><div id="quota-bar" style="background-color: #ccc; width: 0%"></div></div> &nbsp;
+                <a href="/logout">Log Out</a>
             </nav>
         </div>
     </header>
