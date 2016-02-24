@@ -79,8 +79,8 @@
       border-radius: 2px;
     }
 
-    .hidden-node {
-      display: none;
+    .hidden {
+      display: none !important;
     }
     
     body {
@@ -125,23 +125,6 @@
         text-align: center;
         height: 100px;
         width: 70%;
-    }
-
-    #quota-bar-container {
-        display: table-cell;
-        vertical-align: middle;
-        border: solid 1px black;
-        width: 60px;
-        height: 10px;
-        margin-left: 10px;
-        margin-right: 10px;
-        display: inline-block;
-    }
-
-    #quota-bar {
-        box-shadow: rgba(256,256,256,0.5) 1px 1px 0 0px inset, rgba(0,0,0,0.05) -1px -1px 0 0px inset;
-        height: 100%;
-        display: block;
     }
   </style>
   <title>Space Shepherd - {{ username }}</title>
@@ -229,7 +212,7 @@
 
         function updateAndShowToolTip(node) {
             if (node == freeNode) {
-                return tooltip.html("Free space (" + userQuota.freePerc + "% of your quota)").style("visibility", "visible");
+                return tooltip.html("Free space (" + userQuota.freePerc + " of your quota)").style("visibility", "visible");
             } else {
                 return tooltip.html(node.name + "<br/>" +
                                     humanFileSize(node.size) + "<br/>" +
@@ -312,7 +295,7 @@
 
         function computeClass(node) {
             if (tooSmall(node) || node.depth > maxdepth) {
-                return "hidden-node";
+                return "hidden";
             } else if (node.is_dir) {
                 return "folder node"
             } else if (node == freeNode) {
@@ -399,6 +382,12 @@
         function userQuotaUpdated() {
             userQuota.freePerc = (Math.max(1 - userQuota.used / userQuota.total, 0) * 100).toFixed(1) + "%";
             var usage = Math.min(userQuota.used / userQuota.total, 1);
+            var freeSpaceToggle = document.getElementById("free-space-toggle-button");
+            if (usage < 1) {
+                freeSpaceToggle.className = "";
+            } else {
+                freeSpaceToggle.className = "hidden";
+            }
             var quotaBar = document.getElementById("quota-bar");
             if (quotaBar) {
                 quotaBar.style["width"] = (usage * 100) + "%";
@@ -415,6 +404,12 @@
                 waitingForPollResponse = false;
                 if (error) throw error;
                 if (data.changed) {
+                    console.log(data.tree);
+                    if (showFreeSpace) {
+                        augmentTreeWithFreeNode(data.tree);
+                    } else {
+                        deleteFreeNodeFromTree(data.tree);
+                    }
                     filetree = data.tree;
                     userQuota.used = data.used;
                     userQuota.total = data.total;
@@ -456,9 +451,8 @@
         <div class="header-content-wrapper">
             <span class="title">Space Shepherd</span>
             <nav class="user-panel">
-                <a id="free-space-toggle-button" href="#" onclick="toggleFreeSpace()">Show free space</a>&nbsp;
+                <a id="free-space-toggle-button" class="hidden" href="#" onclick="toggleFreeSpace()">Show free space</a>&nbsp;
                 {{username}} &nbsp;
-                <div id="quota-bar-container"><div id="quota-bar" style="background-color: #ccc; width: 0%"></div></div> &nbsp;
                 <a href="/logout">Log Out</a>
             </nav>
         </div>
