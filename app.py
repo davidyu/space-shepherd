@@ -90,18 +90,27 @@ def get_filetree():
     if 'access_token' not in session:
         abort(400)
     client = DropboxClient(session['access_token'])
-    cached_tree = DBC.read(session['user_id'])
-    if not cached_tree:
-        set_trace()
+    user_id = session['user_id']
+    if DBC.user_exists(user_id):
+        result = update_filetree()
+        if result['changed']:
+            cached_tree = result['tree']
+        else:
+            cached_tree = DBC.read(user_id)
+    else:
         tree, cursor = crawl_all_deltas(client)
         DBC.store(session['user_id'], tree, cursor)
         cached_tree = tree
     return jsonify(prune(cached_tree, MAX_DIRECTORY_DEPTH))
 
 # updates the file tree using Dropbox's delta API
-# if changes were made, return the new tree
-# otherwise, return nothing
+# returns a dictionary with two keys:
+# 'changed', which correspond to True if the tree was successfully updated
+# 'tree', which will be the updated tree if applicable (and None otherwise)
 @app.route('/update_filetree')
+def update_filetree_json():
+    return jsonify(update_filetree())
+
 def update_filetree():
     if 'access_token' not in session:
         abort(400)
@@ -137,7 +146,7 @@ def update_filetree():
     if changed:
         result['tree'] = prune(DBC.read(session['user_id']), MAX_DIRECTORY_DEPTH)
 
-    return jsonify(result)
+    return result
     
 # crawls all deltas for the given client starting from
 # the beginning. Do this in memory using a dictionary
