@@ -218,17 +218,22 @@ def update_path(user_id, path, metadata):
 # deletes path for a given root_id (assumes we're passing in a DB cursor)l
 def delete_path_h(cur, root_id, path):
     
-    # decrement size of parent folders
     cur.execute("""SELECT Files.size FROM Layout INNER JOIN Files ON Layout.file_id = Files.id\
                    WHERE Layout.root_id = %s AND Layout.path = %s""", (root_id, path))
     size_result = cur.fetchone()
 
+    # decrement size of parent folders
     if size_result:
         deleted_size, = size_result
         adjust_parent_folder_size(cur, dirname(path), -deleted_size, root_id)
 
-    cur.execute("""DELETE Layout.*, Files.* FROM Layout INNER JOIN Files ON Layout.file_id = Files.id\
-                   WHERE Layout.root_id = %s AND Layout.path LIKE %s""", (root_id, path + "%",))
+    # delete file/folder
+    cur.execute("""DELETE Layout.*, Files.* FROM Layout INNER JOIN Files ON Layout.file_id = Files.id
+                   WHERE Layout.root_id = %s AND Layout.path = %s""", (root_id, path))
+
+    # delete all children of folder
+    cur.execute("""DELETE Layout.*, Files.* FROM Layout INNER JOIN Files ON Layout.file_id = Files.id
+                   WHERE Layout.root_id = %s AND Layout.path LIKE %s""", (root_id, path + "/%",))
 
 # deletes the file or folder (and all children) at the given path
 # assumes the user exists in our database
