@@ -12,6 +12,10 @@
       text-indent: 2px;
     }
 
+    .free {
+      background: rgba(200, 200, 200, 1) !important;
+    }
+
     .folder {
       /* bevel for depth */
       box-shadow: rgba(256,256,256,0.5) 1px 1px 0 0px inset, rgba(0,0,0,0.05) -1px -1px 0 0px inset;
@@ -167,6 +171,12 @@
         var tooltip = null;
 
         var userQuota = { total: 1, used: 0 };
+        var freeNode  = { "name": "Free space"
+                        , "path": "FREESPACE"
+                        , "size": 0
+                        };
+
+        var showFreeSpace = false;
 
         function percentageOfOccupiedSpace(node) {
             return (node.size * 100 / filetree.size).toFixed(1) + '% of total occupied space';
@@ -218,7 +228,7 @@
             filetree = data.tree;
             userQuota.used = data.used;
             userQuota.total = data.total;
-            updateQuotaBar();
+            userQuotaUpdated();
             draw_tree(data.tree);
             window.setInterval( poll, 3000 );
           });
@@ -260,6 +270,8 @@
                 return "hidden-node";
             } else if (node.is_dir) {
                 return "folder node"
+            } else if (node == freeNode) {
+                return "free node";
             } else {
                 return "node";
             }
@@ -331,13 +343,14 @@
               .text(function(d) { return enoughRoomForFileName(d) ? d.name : null; })
         }
 
-        function updateQuotaBar() {
+        function userQuotaUpdated() {
+            var usage = Math.min(userQuota.used / userQuota.total, 1);
             var quotaBar = document.getElementById("quota-bar");
             if (quotaBar) {
-                var usage = Math.min(userQuota.used / userQuota.total, 1);
                 quotaBar.style["width"] = (usage * 100) + "%";
                 quotaBar.style["background-color"] = quotaColor(usage);
             }
+            freeNode.size = Math.max(0, userQuota.total - userQuota.used);
         }
 
         var waitingForPollResponse = false;
@@ -351,10 +364,33 @@
                     filetree = data.tree;
                     userQuota.used = data.used;
                     userQuota.total = data.total;
-                    updateQuotaBar();
+                    userQuotaUpdated();
                     update_tree(data.tree);
                 }
             });
+        }
+
+        function augmentTreeWithFreeNode(tree) {
+            if (tree.children[tree.children.length-1] != freeNode) {
+                tree.children.push(freeNode);
+            }
+        }
+
+        function deleteFreeNodeFromTree(tree) {
+            if (tree.children[tree.children.length-1] == freeNode) {
+                tree.children.pop();
+            }
+        }
+
+        function toggleFreeSpace() {
+            showFreeSpace = !showFreeSpace;
+            if (showFreeSpace) {
+                augmentTreeWithFreeNode(filetree);
+                update_tree(filetree);
+            } else {
+                deleteFreeNodeFromTree(filetree);
+                update_tree(filetree);
+            }
         }
   </script>
 </head>
