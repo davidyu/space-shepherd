@@ -173,13 +173,18 @@ def update_path(user_id, path, metadata):
         parent_id = add_parent_folders(cur, dirname(path), root_id)
 
         # grab file_id for the file specified at given path (file_id will be None if it doesn't exist)
-        cur.execute("""SELECT file_id FROM Layout WHERE root_id = %s AND path = %s""", (root_id, path))
+        cur.execute("""SELECT Layout.file_id, Files.size
+                       FROM Layout INNER JOIN Files ON Layout.file_id = Files.id
+                       WHERE Layout.root_id = %s AND Layout.path = %s""", (root_id, path))
         file_id_result = cur.fetchone()
 
+        # if new entry is a folder, update or create it
         if metadata['is_dir']:
-            # new entry is a folder, create it
             if file_id_result is not None:
-                file_id, = file_id_result
+                # replacing a file or folder
+                file_id, file_size = file_id_result
+                if file_id_result is not None:
+                    delete_path_h(cur, root_id, path)
                 cur.execute("""UPDATE Files SET dir = %s WHERE id = %s""", (True, file_id))
             else:
                 # does not exist, add folder to layout and file tables
