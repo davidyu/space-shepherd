@@ -75,7 +75,7 @@ def user_exists(user_id):
 
 # if we have a local cache for the user (identified by user_id),
 # return the cache, otherwise return None
-def read(user_id):
+def read(user_id, maxdepth):
     try:
         con = connect()
         cur = con.cursor()
@@ -86,7 +86,7 @@ def read(user_id):
         else:
             root_id, = result
             cur.execute("""SELECT * FROM Layout JOIN Files ON Layout.file_id = Files.id
-                           WHERE Layout.root_id = %s""", (root_id,))
+                           WHERE Layout.root_id = %s AND Layout.path_depth < %s""", (root_id, maxdepth))
             return treeify(cur.fetchall())
     except mdb.Error, e:
         print "Error %d: %s" % (e.args[0],e.args[1])
@@ -105,7 +105,7 @@ def treeify(rows):
 def treeify_h(rows, tab):
     # build nodes first
     for row in rows:
-        id, root_id, parent_id, path, file_id, _, is_dir, name, size = row
+        id, root_id, parent_id, path, _, file_id, _, is_dir, name, size = row
         node = { 'name': name
                , 'is_dir': is_dir
                , 'path': path
@@ -115,31 +115,31 @@ def treeify_h(rows, tab):
         tab[id] = node
     # now build hiearchical tree structure
     for row in rows:
-        id, _, parent_id, _, _, _, _, _, _ = row
+        id, _, parent_id, _, _, _, _, _, _, _ = row
         if parent_id is not None:
             tab[parent_id]['children'].append(tab[id])
     # return the root
-    _, root_id, _, _, _, _, _, _, _ = rows[0]
+    _, root_id, _, _, _, _, _, _, _, _ = rows[0]
     return tab[root_id]
 
 # basically mkdir -p
 def add_parent_folders(cur, path, root_id):
     if dirname(path) is not path: # while we haven't reached the root (/)
-        cur.execute("""SELECT id FROM Layout WHERE root_id = %s AND path = %s""", (root_id, path))
+        cur.execute("""SELECT id, path_depth FROM Layout WHERE root_id = %s AND path = %s""", (root_id, path))
         result = cur.fetchone()
         if result is None:
             # add all parents before me first
-            parent_id = add_parent_folders(cur, dirname(path), root_id)
+            parent_id, parent_depth = add_parent_folders(cur, dirname(path), root_id)
             cur.execute("""INSERT INTO Files(dir, name, size) VALUES(%s,%s,%s)""", (True, basename(path), 0))
             file_id = cur.lastrowid
-            cur.execute("""INSERT INTO Layout(path, root_id, parent_id, file_id) VALUES(%s,%s,%s,%s)""", (path, root_id, parent_id, file_id))
+            cur.execute("""INSERT INTO Layout(path, path_depth, root_id, parent_id, file_id) VALUES(%s,%s,%s,%s,%s)""", (path, parent_depth + 1, root_id, parent_id, file_id))
             root_id = cur.lastrowid
-            return file_id
+            return file_id, parent_depth + 1
         else:
-            file_id, = result
-            return file_id
+            file_id, path_depth = result
+            return file_id, path_depth
     else:
-        return root_id
+        return root_id, 0
 
 # increments the parent folder size by some given number
 # assumes entries for all parent folders in path exist (IE:
@@ -163,7 +163,7 @@ def update_path(user_id, path, metadata):
         root_id, = cur.fetchone()
 
         # add entries for nonexistent parent folders
-        parent_id = add_parent_folders(cur, dirname(path), root_id)
+        parent_id, parent_depth = add_parent_folders(cur, dirname(path), root_id)
 
         # grab file_id for the file specified at given path (file_id will be None if it doesn't exist)
         cur.execute("""SELECT Files.id, Files.dir
@@ -187,12 +187,12 @@ def update_path(user_id, path, metadata):
                     # default size to 0
                     cur.execute("""INSERT INTO Files(dir, name, size) VALUES(%s,%s,%s)""", (True, basename(path), 0))
                     file_id = cur.lastrowid
-                    cur.execute("""INSERT INTO Layout(path, root_id, parent_id, file_id) VALUES(%s,%s,%s,%s)""", (path, root_id, parent_id, file_id))
+                    cur.execute("""INSERT INTO Layout(path, path_depth, root_id, parent_id, file_id) VALUES(%s,%s,%s,%s,%s)""", (path, parent_depth + 1, root_id, parent_id, file_id))
             # no file at path, just add folder
             else:
                 cur.execute("""INSERT INTO Files(dir, name, size) VALUES(%s,%s,%s)""", (True, basename(path), 0))
                 file_id = cur.lastrowid
-                cur.execute("""INSERT INTO Layout(path, root_id, parent_id, file_id) VALUES(%s,%s,%s,%s)""", (path, root_id, parent_id, file_id))
+                cur.execute("""INSERT INTO Layout(path, path_depth, root_id, parent_id, file_id) VALUES(%s,%s,%s,%s,%s)""", (path, parent_depth + 1, root_id, parent_id, file_id))
         else:
             # delete whatever we have at path with file
             if file_result is not None:
@@ -200,7 +200,7 @@ def update_path(user_id, path, metadata):
 
             cur.execute("""INSERT INTO Files(dir, name, size) VALUES(%s,%s,%s)""", (False, basename(path), metadata['bytes']))
             file_id = cur.lastrowid
-            cur.execute("""INSERT INTO Layout(path, root_id, parent_id, file_id) VALUES(%s,%s,%s,%s)""", (path, root_id, parent_id, file_id))
+            cur.execute("""INSERT INTO Layout(path, path_depth, root_id, parent_id, file_id) VALUES(%s,%s,%s,%s,%s)""", (path, parent_depth + 1, root_id, parent_id, file_id))
 
             # update the sizes for all parent folders recursively up to the root
             adjust_parent_folder_size(cur, dirname(path), metadata['bytes'], root_id)
@@ -311,21 +311,21 @@ def store_tree(cur, root):
     cur.execute("""INSERT INTO Files(dir, name, size) VALUES(%s,%s,%s)""", (root['is_dir'], root['name'], root['size']))
     file_id = cur.lastrowid
 
-    cur.execute("""INSERT INTO Layout(path, file_id) VALUES(%s,%s)""", (root['path'], file_id))
+    cur.execute("""INSERT INTO Layout(path, path_depth, file_id) VALUES(%s,%s,%s)""", (root['path'], 0, file_id))
     root_id = cur.lastrowid
 
     cur.execute("""UPDATE Layout SET root_id = %s WHERE id = %s""", (root_id, root_id))
 
     if 'children' in root:
         for child in root['children']:
-            store_tree_r(cur, child, root_id, root_id)
+            store_tree_r(cur, child, root_id, 0, root_id)
     return root_id
 
 # recursively stores the filetree into the  file table
 # TODO be mindful of preexisting folders (EG: a shared folder)
 # right now all shared folders are blissfully duplicated
 
-def store_tree_r(cur, node, parent_id, root_id):
+def store_tree_r(cur, node, parent_id, parent_depth, root_id):
     is_dir = node['is_dir']
     if is_dir:
         cur.execute("""INSERT INTO Files(dir, name, size) VALUES(%s,%s,%s)""", (node['is_dir'], node['name'], node['size']))
@@ -333,10 +333,10 @@ def store_tree_r(cur, node, parent_id, root_id):
         cur.execute("""INSERT INTO Files(dir, name, size) VALUES(%s,%s,%s)""", (False, node['name'], node['size']))
 
     file_id = cur.lastrowid
-    cur.execute("""INSERT INTO Layout(root_id, parent_id, path, file_id) VALUES(%s,%s,%s,%s)""", (root_id, parent_id, node['path'], file_id))
+    cur.execute("""INSERT INTO Layout(root_id, parent_id, path, path_depth, file_id) VALUES(%s,%s,%s,%s,%s)""", (root_id, parent_id, node['path'], parent_depth + 1, file_id))
 
     new_parent_id = cur.lastrowid 
 
     if is_dir and 'children' in node:
         for child in node['children']:
-            store_tree_r(cur, child, new_parent_id, root_id)
+            store_tree_r(cur, child, new_parent_id, parent_depth + 1, root_id)

@@ -96,12 +96,12 @@ def get_filetree():
         if result['changed']:
             cached_tree = result['tree']
         else:
-            cached_tree = DBC.read(user_id)
+            cached_tree = DBC.read(user_id, MAX_DIRECTORY_DEPTH)
     else:
         tree, cursor = crawl_all_deltas(client)
         DBC.store(session['user_id'], tree, cursor)
-        cached_tree = tree
-    return jsonify(prune(cached_tree, MAX_DIRECTORY_DEPTH))
+        cached_tree = prune(tree, MAX_DIRECTORY_DEPTH)
+    return jsonify(cached_tree)
 
 # updates the file tree using Dropbox's delta API
 # returns a dictionary with two keys:
@@ -144,7 +144,7 @@ def update_filetree():
     result = { 'changed': changed }
 
     if changed:
-        result['tree'] = prune(DBC.read(session['user_id']), MAX_DIRECTORY_DEPTH)
+        result['tree'] = DBC.read(session['user_id'], MAX_DIRECTORY_DEPTH)
 
     return result
     
