@@ -75,6 +75,15 @@
         letter-spacing: -1px;
         float: left;
     }
+
+    #loader {
+        margin: auto;
+        position: absolute;
+        top: 0; left: 0; bottom: 0; right: 0;
+        text-align: center;
+        height: 100px;
+        width: 70%;
+    }
   </style>
   <title>Space Shepherd - {{ username }}</title>
   <script src="/static/vendor/d3.js" type="text/javascript"></script>
@@ -190,12 +199,21 @@
             window.setInterval( poll, 3000 );
           });
 
+          setTimeout(updateLoadingText, 2000);
+
           tooltip = d3.select("body")
               .append("div")
               .style("position", "absolute")
               .style("z-index", "10")
               .style("visibility", "hidden")
               .attr("class", "d3-tip")
+        }
+
+        function updateLoadingText() {
+            var loader = document.getElementById("loader");
+            if (loader) {
+                loader.innerHTML += "<br/><p>Hang tight, we're crawling your file tree for the first time. This could take a couple of minutes...</p>"
+            }
         }
 
         function position() {
@@ -228,6 +246,10 @@
         function draw_tree(root) {
             treemap_node = div.datum(root).selectAll(".node")
               .data(treemap.nodes, function(d) {return d.path;});
+
+            // delete the loader element
+            var loader = document.getElementById("loader");
+            loader.parentNode.removeChild(loader);
 
             treemap_node
               .enter().append("div")
@@ -311,6 +333,9 @@
     </header>
   <div class="main-container">
       <div id="canvas">
+      </div>
+      <div id="loader">
+        <img src="/static/img/ring-alt.svg" alt="Loading your file tree...">
       </div>
   </div>
   </body>
