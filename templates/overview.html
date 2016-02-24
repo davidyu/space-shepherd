@@ -147,7 +147,11 @@
         }
 
         function updateAndShowToolTip(node) {
-            return tooltip.html(node.name + "<br/>" + humanFileSize(node.size) + "<br/>" + (isRoot(node) ? "Root" : percentageOfOccupiedSpace(node)) + "<br/>" + ( node.is_dir ? "Folder<br/>" : "" ) )
+            return tooltip.html(node.name + "<br/>" +
+                                humanFileSize(node.size) + "<br/>" +
+                                (isRoot(node) ? "" : node.path) + "<br/>" +
+                                (isRoot(node) ? "Root" : percentageOfOccupiedSpace(node)) + "<br/>" +
+                                ( node.is_dir ? "Folder<br/>" : "" ) )
                           .style("visibility", "visible");
         }
 
@@ -155,6 +159,7 @@
         var TITLESAFE_MARGIN = 10;
         var TIP_OFFSET_X = 20;
         var TIP_OFFSET_Y = 20;
+
         function moveToolTip() {
             var x = d3.event.pageX;
             var y = d3.event.pageY;
