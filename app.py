@@ -99,7 +99,6 @@ MAX_DIRECTORY_DEPTH = 4
 
 @app.route('/get_filetree')
 def get_filetree():
-    set_trace()
     if 'access_token' not in session:
         abort(400)
     client = DropboxClient(session['access_token'])
