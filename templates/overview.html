@@ -13,8 +13,8 @@
     .folder {
       /* subtle thin pixel bevel edge */
       box-shadow:
-        rgba(256,256,256,0.35)
-        0px 1px 0 /* topmost pixel only */
+        rgba(256,256,256,0.5)
+        1px 1px 0 /* topleft borders only */
         0px /* spread */
         inset;
       white-space: nowrap;
@@ -141,6 +141,7 @@
             if (error) throw error;
             filetree = tree;
             draw_tree(tree);
+            window.setInterval( poll, 3000 );
           });
 
           tooltip = d3.select("body")
@@ -149,8 +150,6 @@
               .style("z-index", "10")
               .style("visibility", "hidden")
               .attr("class", "d3-tip")
-
-          window.setInterval( poll, 3000 );
         }
 
         function position() {
