@@ -134,6 +134,7 @@ def add_parent_folders(cur, path, root_id):
             file_id = cur.lastrowid
             cur.execute("""INSERT INTO Layout(path, root_id, parent_id, file_id) VALUES(%s,%s,%s,%s)""", (path, root_id, parent_id, file_id))
             root_id = cur.lastrowid
+            return file_id
         else:
             file_id, = result
             return file_id
@@ -144,7 +145,6 @@ def add_parent_folders(cur, path, root_id):
 # assumes entries for all parent folders in path exist (IE:
 # we called add_parent_folders for path)
 def adjust_parent_folder_size(cur, path, delta, root_id):
-    # set_trace()
     cur.execute("""UPDATE Files
                    INNER JOIN Layout ON Layout.file_id = Files.id
                    SET Files.size = Files.size + (%s)
