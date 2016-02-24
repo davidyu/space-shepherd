@@ -153,18 +153,20 @@
 
         // make sure the tooltip is never flush with the viewport border
         var TITLESAFE_MARGIN = 10;
+        var TIP_OFFSET_X = 20;
+        var TIP_OFFSET_Y = 20;
         function moveToolTip() {
-            var x = event.pageX;
-            var y = event.pageY;
+            var x = d3.event.pageX;
+            var y = d3.event.pageY;
             var w = tooltip.node().offsetWidth;
             var h = tooltip.node().offsetHeight;
-            if ( x + TITLESAFE_MARGIN > viewport.w - w ||
-                 y + TITLESAFE_MARGIN > viewport.h - h ) {
-                return tooltip.style("top", (event.pageY-h) + "px")
-                              .style("left",(event.pageX-w) + "px");
+            if ( x + TIP_OFFSET_X + TITLESAFE_MARGIN > viewport.w - w ||
+                 y + TIP_OFFSET_Y + TITLESAFE_MARGIN > viewport.h - h ) {
+                return tooltip.style("top", (y-h+TIP_OFFSET_Y) + "px")
+                              .style("left",(x-w-TIP_OFFSET_X) + "px");
             } else {
-                return tooltip.style("top", (event.pageY-10) + "px")
-                              .style("left",(event.pageX+10) + "px");
+                return tooltip.style("top", (y-TIP_OFFSET_Y) + "px")
+                              .style("left",(x+TIP_OFFSET_X) + "px");
             }
         }
 
