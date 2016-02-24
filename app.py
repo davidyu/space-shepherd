@@ -131,6 +131,7 @@ def update_filetree_json():
     result = update_filetree()
 
     if result['changed']:
+        client = DropboxClient(session['access_token'])
         used, total = get_quota_usage(client)
         result['used'] = used
         result['total'] = total
