@@ -23,6 +23,35 @@
         vertical-align: middle;
     }
 
+    #free-space-toggle-button {
+        font-size: 17px/1.5;
+        /* bevel for depth */
+        box-shadow:rgba(256,256,256,0.5) 1px 1px 0 0px inset, rgba(0,0,0,0.05) -1px -1px 0 0px inset;
+        border: solid 1px black;
+        color: rgb(0,0,0);
+        text-decoration: none;
+        line-height: 20px;
+        padding: 10px 5px;
+        background: rgb(179, 205, 227);
+        display:inline-block;
+        width: 120px;
+        text-align:center;
+        margin-right: 10px;
+    }
+
+    #free-space-toggle-button:hover {
+      box-shadow:rgba(256,256,256,0.5) 2px 2px 0 0px inset, rgba(0,0,0,0.1) -2px -2px 0 0px inset;
+      background: rgb(204, 231, 255);
+    }
+
+    #free-space-toggle-button:active {
+        box-shadow:rgba(256,256,256,0.5) -2px -2px 0 0px inset, rgba(0,0,0,0.1) 2px 2px 0 0px inset;
+        padding-top:11px;
+        padding-left:6px;
+        padding-bottom:9px;
+        padding-right:4px;
+    }
+
     .folder {
       /* bevel for depth */
       box-shadow: rgba(256,256,256,0.5) 1px 1px 0 0px inset, rgba(0,0,0,0.05) -1px -1px 0 0px inset;
@@ -62,6 +91,7 @@
     .top {
         min-height: 56px;
         position: relative;
+        margin: 8px;
     }
 
     .header-content-wrapper {
@@ -408,12 +438,15 @@
 
         function toggleFreeSpace() {
             showFreeSpace = !showFreeSpace;
+            var toggleButton = document.getElementById("free-space-toggle-button");
             if (showFreeSpace) {
                 augmentTreeWithFreeNode(filetree);
                 update_tree(filetree);
+                toggleButton.innerText = "Hide free space";
             } else {
                 deleteFreeNodeFromTree(filetree);
                 update_tree(filetree);
+                toggleButton.innerText = "Show free space";
             }
         }
   </script>
@@ -423,6 +456,7 @@
         <div class="header-content-wrapper">
             <span class="title">Space Shepherd</span>
             <nav class="user-panel">
+                <a id="free-space-toggle-button" href="#" onclick="toggleFreeSpace()">Show free space</a>&nbsp;
                 {{username}} &nbsp;
                 <div id="quota-bar-container"><div id="quota-bar" style="background-color: #ccc; width: 0%"></div></div> &nbsp;
                 <a href="/logout">Log Out</a>
