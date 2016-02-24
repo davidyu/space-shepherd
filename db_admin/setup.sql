@@ -12,6 +12,7 @@ CREATE TABLE `Layout` (
 `root_id` BIGINT(8) UNSIGNED,
 `parent_id` BIGINT(8) UNSIGNED,
 `path` VARCHAR(256) NOT NULL,
+`path_depth` SMALLINT(2) NOT NULL,
 `file_id` BIGINT(8) UNSIGNED NOT NULL
 )
 CHARACTER SET utf8
