@@ -147,6 +147,8 @@
         var div = null;
         var tooltip = null;
 
+        var userQuota = { total: 0, used: 0 };
+
         function percentageOfOccupiedSpace(node) {
             return (node.size * 100 / filetree.size).toFixed(1) + '% of total occupied space';
         }
@@ -192,10 +194,12 @@
                   .style("left", margin.left + "px")
                   .style("top", margin.top + "px");
 
-          d3.json("/get_filetree", function(error, tree) {
+          d3.json("/get_filetree", function(error, data) {
             if (error) throw error;
-            filetree = tree;
-            draw_tree(tree);
+            filetree = data.tree;
+            userQuota.used = data.used;
+            userQuota.total = data.total;
+            draw_tree(data.tree);
             window.setInterval( poll, 3000 );
           });
 
@@ -316,6 +320,8 @@
                 if (error) throw error;
                 if (data.changed) {
                     filetree = data.tree;
+                    userQuota.used = data.used;
+                    userQuota.total = data.total;
                     update_tree(data.tree);
                 }
             });
