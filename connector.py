@@ -5,7 +5,6 @@
 import MySQLdb as mdb
 import sys
 from os.path import dirname, basename
-from zlib import crc32
 
 from secrets import *
 
@@ -110,8 +109,7 @@ def treeify_h(rows, tab):
         node = { 'name': name
                , 'is_dir': is_dir
                , 'path': path
-               , 'size': size
-               , 'id': crc32(path.encode('utf-8')) }
+               , 'size': size }
         if is_dir:
             node['children'] = []
         tab[id] = node
