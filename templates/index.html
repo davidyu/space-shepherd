@@ -1,13 +1,67 @@
+<!DOCTYPE html>
 <html>
 <head>
+  <meta charset="utf-8">
   <style>
+    body {
+      font: 300 16px/1.5 "Helvetica Neue Light", "Helvetica Neue", Helvetica, Arial, sans-serif;
+      margin: 0;
+    }
+
+    /* center (somewhat) vertically and horizontally */
+    .sell-page {
+        margin: auto;
+        position: absolute;
+        top: 0; left: 0; bottom: 0; right: 0;
+        height: 400px;
+        width: 70%;
+    }
+
+    .bold-copy {
+        font-size: 100px;
+        font-weight: 300;
+        line-height: 52px;
+        letter-spacing: -1px;
+    }
+
+    .subheading {
+        font-size: 16px;
+        line-height: 10px;
+        margin-top:-20px;
+        padding: 0;
+    }
+
+    .cta {
+      font-size: 17px/1.5;
+      /* light pixel bevel edge */
+      box-shadow:
+        rgba(256,256,256,0.5)
+        1px 1px 0 /* topleft borders only */
+        0px /* spread */
+        inset;
+      /* dark pixel bevel edge */
+      box-shadow:
+        rgba(0,0,0,0.2)
+        -1px -1px 0 /* bottom right borders only */
+        0px /* spread */
+        inset;
+      border: solid 1px black;
+      color: rgb(0,0,0);
+      text-decoration: none;
+      line-height: 20px;
+      padding: 20px;
+      background: rgb(179, 205, 227);
+    }
   </style>
   <title>Space Shepherd - A Dropbox Space Analyzer</title>
 </head>
 <body>
-  <div class="main-container">
-    HELLO
-    <a href="/login">Login to Your Dropbox Account</a>
+  <div class="sell-page">
+    <h1 class="bold-copy">Space Shepherd</h1>
+    <p class="subheading">Find out what's taking up space in your Dropbox.</p>
+    <br/>
+    <br/>
+    <a class="cta" href="/login">Login to Your Dropbox Account</a>
   </div>
   </body>
 </html>
