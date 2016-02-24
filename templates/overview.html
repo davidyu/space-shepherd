@@ -14,6 +14,13 @@
 
     .free {
       background: rgba(200, 200, 200, 1) !important;
+      display: table;
+      text-align: center;
+    }
+
+    .free > .free-label {
+        display: table-cell;
+        vertical-align: middle;
     }
 
     .folder {
@@ -277,6 +284,15 @@
             }
         }
 
+        function labelNode(node) {
+            if (node == freeNode) {
+                var perc = ((1 - userQuota.used / userQuota.total) * 100).toFixed(1);
+                return "<span class='free-label'>(Free space: " +  perc + "%)<br/>" + humanFileSize(node.size) + "</span>";
+            } else {
+                return enoughRoomForFileName(node) ? node.name : null;
+            }
+        }
+
         treemap_node = null;
 
         function draw_tree(root) {
@@ -292,7 +308,7 @@
               .attr("class", computeClass)
               .call(position)
               .style("background", function(d) { return color(d.depth); })
-              .text(function(d) { return enoughRoomForFileName(d) ? d.name : null; })
+              .html(labelNode)
               .on("mouseover", updateAndShowToolTip)
               .on("mousemove", moveToolTip)
               .on("mouseout", function(){return tooltip.style("visibility", "hidden");});
@@ -329,7 +345,7 @@
               .attr("class", computeClass)
               .call(position)
               .style("background", function(d) { return color(d.depth); })
-              .text(function(d) { return enoughRoomForFileName(d) ? d.name : null; })
+              .html(labelNode)
               .on("mouseover", updateAndShowToolTip)
               .on("mousemove", moveToolTip)
               .on("mouseout", function(){return tooltip.style("visibility", "hidden");});
@@ -340,7 +356,7 @@
             treemap_node
               .attr("class", computeClass)
               .call(position)
-              .text(function(d) { return enoughRoomForFileName(d) ? d.name : null; })
+              .html(labelNode)
         }
 
         function userQuotaUpdated() {
