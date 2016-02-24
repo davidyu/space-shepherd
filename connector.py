@@ -148,8 +148,8 @@ def add_parent_folders(cur, path, root_id):
 def adjust_parent_folder_size(cur, path, delta, root_id):
     # set_trace()
     cur.execute("""UPDATE Files
-                   INNER JOIN Layout ON Layout.file_id = Files.id\
-                   SET Files.size = Files.size + (%s)\
+                   INNER JOIN Layout ON Layout.file_id = Files.id
+                   SET Files.size = Files.size + (%s)
                    WHERE Layout.root_id = %s AND Layout.path = %s""", (delta, root_id, path))
 
     if dirname(path) is not path: # while we haven't reached the root (/)
@@ -168,24 +168,43 @@ def update_path(user_id, path, metadata):
         parent_id = add_parent_folders(cur, dirname(path), root_id)
 
         # grab file_id for the file specified at given path (file_id will be None if it doesn't exist)
-        cur.execute("""SELECT file_id FROM Layout WHERE root_id = %s AND path = %s""", (root_id, path))
-        file_id_result = cur.fetchone()
+        cur.execute("""SELECT Files.id, Files.dir
+                       FROM Layout INNER JOIN Files ON Layout.file_id = Files.id
+                       WHERE Layout.root_id = %s AND Layout.path = %s""", (root_id, path))
 
-        if file_id_result is not None:
-            delete_path_h(cur, root_id, path)
+        file_result = cur.fetchone()
 
         if metadata['is_dir']:
-            # new entry is a folder, create it and default size to 0
-            cur.execute("""INSERT INTO Files(dir, name, size) VALUES(%s,%s,%s)""", (True, basename(path), 0))
-            file_id = cur.lastrowid
-            cur.execute("""INSERT INTO Layout(path, root_id, parent_id, file_id) VALUES(%s,%s,%s,%s)""", (path, root_id, parent_id, file_id))
+            if file_result is not None:
+                file_id, is_dir = file_result
+
+                if is_dir:
+                    # just update metadata (in our case, just name) and don't touch children
+                    cur.execute("""UPDATE Files
+                                   SET name = %s
+                                   WHERE id = %s""", (basename(path), file_id))
+                else:
+                    # delete file and replace with folder
+                    delete_path_h(cur, root_id, path)
+                    # default size to 0
+                    cur.execute("""INSERT INTO Files(dir, name, size) VALUES(%s,%s,%s)""", (True, basename(path), 0))
+                    file_id = cur.lastrowid
+                    cur.execute("""INSERT INTO Layout(path, root_id, parent_id, file_id) VALUES(%s,%s,%s,%s)""", (path, root_id, parent_id, file_id))
+            # no file at path, just add folder
+            else:
+                cur.execute("""INSERT INTO Files(dir, name, size) VALUES(%s,%s,%s)""", (True, basename(path), 0))
+                file_id = cur.lastrowid
+                cur.execute("""INSERT INTO Layout(path, root_id, parent_id, file_id) VALUES(%s,%s,%s,%s)""", (path, root_id, parent_id, file_id))
         else:
-            # new entry is a file, replace local state at path with file
-            # then update the sizes for all parents recursively up to the root
+            # delete whatever we have at path with file
+            if file_result is not None:
+                delete_path_h(cur, root_id, path)
+
             cur.execute("""INSERT INTO Files(dir, name, size) VALUES(%s,%s,%s)""", (False, basename(path), metadata['bytes']))
             file_id = cur.lastrowid
             cur.execute("""INSERT INTO Layout(path, root_id, parent_id, file_id) VALUES(%s,%s,%s,%s)""", (path, root_id, parent_id, file_id))
 
+            # update the sizes for all parent folders recursively up to the root
             adjust_parent_folder_size(cur, dirname(path), metadata['bytes'], root_id)
 
         con.commit()
