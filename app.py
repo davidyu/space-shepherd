@@ -54,6 +54,18 @@ def dropbox_auth_finish():
     session['user_id'] = user_id
     return redirect(url_for('overview'))
 
+def get_dropbox_auth_flow():
+    redirect_uri = url_for('dropbox_auth_finish', _external=True, _scheme='https')
+    return DropboxOAuth2Flow( DROPBOX_APP_KEY
+                            , DROPBOX_APP_SECRET
+                            , redirect_uri
+                            , session
+                            , "dropbox-auth-csrf-token" )
+
+def dropbox_auth_start():
+    authorize_url = get_dropbox_auth_flow().start()
+    return redirect(authorize_url)
+
 @app.route('/overview')
 def overview():
     if 'access_token' not in session:
@@ -87,6 +99,7 @@ MAX_DIRECTORY_DEPTH = 4
 
 @app.route('/get_filetree')
 def get_filetree():
+    set_trace()
     if 'access_token' not in session:
         abort(400)
     client = DropboxClient(session['access_token'])
@@ -101,7 +114,14 @@ def get_filetree():
         tree, cursor = crawl_all_deltas(client)
         DBC.store(session['user_id'], tree, cursor)
         cached_tree = prune(tree, MAX_DIRECTORY_DEPTH)
-    return jsonify(cached_tree)
+
+    used, total = get_quota_usage(client)
+
+    result = { 'tree' : cached_tree
+             , 'used' : used
+             , 'total': total }
+
+    return jsonify(result)
 
 # updates the file tree using Dropbox's delta API
 # returns a dictionary with two keys:
@@ -109,7 +129,14 @@ def get_filetree():
 # 'tree', which will be the updated tree if applicable (and None otherwise)
 @app.route('/update_filetree')
 def update_filetree_json():
-    return jsonify(update_filetree())
+    result = update_filetree()
+
+    if result['changed']:
+        used, total = get_quota_usage(client)
+        result['used'] = used
+        result['total'] = total
+        
+    return jsonify(result)
 
 def update_filetree():
     if 'access_token' not in session:
@@ -141,6 +168,7 @@ def update_filetree():
 
 
     DBC.set_delta_cursor(user_id, cursor)
+
     result = { 'changed': changed }
 
     if changed:
@@ -263,17 +291,11 @@ def crawl_all_deltas(client):
 
     return tab['/'], cursor
 
-def get_dropbox_auth_flow():
-    redirect_uri = url_for('dropbox_auth_finish', _external=True, _scheme='https')
-    return DropboxOAuth2Flow( DROPBOX_APP_KEY
-                            , DROPBOX_APP_SECRET
-                            , redirect_uri
-                            , session
-                            , "dropbox-auth-csrf-token" )
-
-def dropbox_auth_start():
-    authorize_url = get_dropbox_auth_flow().start()
-    return redirect(authorize_url)
+def get_quota_usage(client):
+    account = client.account_info()
+    used = float(account['quota_info']['normal']) + float(account['quota_info']['shared'])
+    total = float(account['quota_info']['quota'])
+    return used, total
 
 if __name__ == '__main__':
     context = ('server.crt', 'server.key')
