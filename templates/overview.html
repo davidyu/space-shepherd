@@ -111,9 +111,22 @@
             return tooltip.html(node.name + "<br/>" + humanFileSize(node.size) + "<br/>" + (isRoot(node) ? "Root" : percentageOfOccupiedSpace(node)) + "<br/>" + ( node.is_dir ? "Folder<br/>" : "" ) )
                           .style("visibility", "visible");
         }
-        
+
+        // make sure the tooltip is never flush with the viewport border
+        var TITLESAFE_MARGIN = 10;
         function moveToolTip() {
-            return tooltip.style("top", (event.pageY-10) + "px").style("left",(event.pageX+10) + "px");
+            var x = event.pageX;
+            var y = event.pageY;
+            var w = tooltip.node().offsetWidth;
+            var h = tooltip.node().offsetHeight;
+            if ( x + TITLESAFE_MARGIN > viewport.w - w ||
+                 y + TITLESAFE_MARGIN > viewport.h - h ) {
+                return tooltip.style("top", (event.pageY-h) + "px")
+                              .style("left",(event.pageX-w) + "px");
+            } else {
+                return tooltip.style("top", (event.pageY-10) + "px")
+                              .style("left",(event.pageX+10) + "px");
+            }
         }
 
         function start() {
