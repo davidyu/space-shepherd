@@ -127,7 +127,7 @@ def treeify_h(rows, tab):
 # basically mkdir -p
 def add_parent_folders(cur, path, root_id):
     if dirname(path) is not path: # while we haven't reached the root (/)
-        cur.execute("""SELECT id FROM Layout WHERE path = %s""", (path,))
+        cur.execute("""SELECT id FROM Layout WHERE root_id = %s AND path = %s""", (root_id, path))
         result = cur.fetchone()
         if result is None:
             # add all parents before me first
@@ -145,13 +145,20 @@ def add_parent_folders(cur, path, root_id):
 # increments the parent folder size by some given number
 # assumes entries for all parent folders in path exist (IE:
 # we called add_parent_folders for path)
-def adjust_parent_folder_size(cur, path, delta):
-    cur.execute("""UPDATE Files
-                   INNER JOIN Layout ON Layout.file_id = Files.id\
-                    SET Files.size = Files.size + %s\
-                   WHERE Layout.path = %s""", (delta, path))
+def adjust_parent_folder_size(cur, path, delta, root_id):
+    if delta > 0:
+        cur.execute("""UPDATE Files
+                       INNER JOIN Layout ON Layout.file_id = Files.id\
+                       SET Files.size = Files.size + %s\
+                       WHERE Layout.root_id = %s AND Layout.path = %s""", (root_id, delta, path))
+    else:
+        cur.execute("""UPDATE Files
+                       INNER JOIN Layout ON Layout.file_id = Files.id\
+                       SET Files.size = Files.size - %s\
+                       WHERE Layout.root_id = %s AND Layout.path = %s""", (root_id, -delta, path))
+
     if dirname(path) is not path: # while we haven't reached the root (/)
-        adjust_parent_folder_size(cur, dirname(path), delta)
+        adjust_parent_folder_size(cur, dirname(path), delta, root_id)
 
 # assumes the user exists in our database
 def update_path(user_id, path, metadata):
@@ -166,7 +173,7 @@ def update_path(user_id, path, metadata):
         parent_id = add_parent_folders(cur, dirname(path), root_id)
 
         # grab file_id for the file specified at given path (file_id will be None if it doesn't exist)
-        cur.execute("""SELECT file_id FROM Layout WHERE path = %s""", (path,))
+        cur.execute("""SELECT file_id FROM Layout WHERE root_id = %s AND path = %s""", (root_id, path))
         file_id_result = cur.fetchone()
 
         if metadata['is_dir']:
@@ -183,13 +190,13 @@ def update_path(user_id, path, metadata):
             # new entry is a file, replace local state at path with file
             # then update the sizes for all parents recursively up to the root
             if file_id_result is not None:
-                delete_path(user_id, path)
+                delete_path_h(cur, root_id, path)
 
             cur.execute("""INSERT INTO Files(dir, name, size) VALUES(%s,%s,%s)""", (False, basename(path), metadata['bytes']))
             file_id = cur.lastrowid
             cur.execute("""INSERT INTO Layout(path, root_id, parent_id, file_id) VALUES(%s,%s,%s,%s)""", (path, root_id, parent_id, file_id))
 
-            adjust_parent_folder_size(cur, dirname(path), metadata['bytes'])
+            adjust_parent_folder_size(cur, dirname(path), metadata['bytes'], root_id)
 
         con.commit()
     except mdb.Error, e:
@@ -199,6 +206,22 @@ def update_path(user_id, path, metadata):
     finally:
         if con:
             con.close()
+
+
+# deletes path for a given root_id (assumes we're passing in a DB cursor)l
+def delete_path_h(cur, root_id, path):
+    
+    # decrement size of parent folders
+    cur.execute("""SELECT Files.size FROM Layout INNER JOIN Files ON Layout.file_id = Files.id\
+                   WHERE Layout.root_id = %s AND Layout.path = %s""", (root_id, path))
+    size_result = cur.fetchone()
+
+    if size_result:
+        deleted_size, = size_result
+        adjust_parent_folder_size(cur, dirname(path), -deleted_size, root_id)
+
+    cur.execute("""DELETE Layout.*, Files.* FROM Layout INNER JOIN Files ON Layout.file_id = Files.id\
+                   WHERE Layout.root_id = %s AND Layout.path LIKE %s""", (root_id, path + "%",))
 
 # deletes the file or folder (and all children) at the given path
 # assumes the user exists in our database
@@ -210,18 +233,9 @@ def delete_path(user_id, path):
         # get root_id from User table and delete all corresponding entries in the File and Layout table
         cur.execute("""SELECT root_id FROM Users WHERE user_id = %s""", (user_id,))
         root_id, = cur.fetchone()
-        
-        # decrement size of parent folders
-        cur.execute("""SELECT File.size FROM Layout INNER JOIN Files ON Layout.file_id = Files.id\
-                       WHERE Layout.root_id = %s AND Layout.path = %s""", (path,))
-        size_result = cur.fetchone()
 
-        if size_result:
-            deleted_size, = size_result
-            adjust_parent_folder_size(cur, dirname(path), -deleted_size)
+        delete_path_h(cur, root_id, path)
 
-        cur.execute("""DELETE Layout.*, Files.* FROM Layout INNER JOIN Files ON Layout.file_id = Files.id\
-                       WHERE Layout.root_id = %s AND Layout.path LIKE %s""", (path + "%",))
         con.commit()
     except mdb.Error, e:
         print "Error %d: %s" % (e.args[0],e.args[1])
@@ -253,7 +267,7 @@ def clear(user_id):
             con.close()
 
 # stores the filetree for a given user
-def store(user_id, file_tree):
+def store(user_id, file_tree, cursor):
     try:
         con = connect()
         cur = con.cursor()
@@ -262,7 +276,7 @@ def store(user_id, file_tree):
         root_id = store_tree(cur, file_tree)
 
         # write to user table
-        cur.execute("""INSERT INTO Users(user_id, root_id) VALUES(%s,%s)""", (user_id, root_id))
+        cur.execute("""INSERT INTO Users(user_id, root_id, delta_cursor) VALUES(%s,%s,%s)""", (user_id, root_id, cursor))
 
         con.commit()
 

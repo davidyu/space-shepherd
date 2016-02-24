@@ -93,8 +93,8 @@ def get_filetree():
     client = DropboxClient(session['access_token'])
     cached_tree = DBC.read(session['user_id'])
     if not cached_tree:
-        tree = crawl_all_deltas(client)
-        DBC.store(session['user_id'], tree)
+        tree, cursor = crawl_all_deltas(client)
+        DBC.store(session['user_id'], tree, cursor)
         cached_tree = tree
     return jsonify(prune(cached_tree, MAX_DIRECTORY_DEPTH))
 
@@ -228,7 +228,7 @@ def crawl_all_deltas(client):
                 tab[lowercase_path] = node
                 parent['children'].append(node)
 
-    return tab['/']
+    return tab['/'], cursor
 
 def get_dropbox_auth_flow():
     redirect_uri = url_for('dropbox_auth_finish', _external=True, _scheme='https')
