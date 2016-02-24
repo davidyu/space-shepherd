@@ -177,7 +177,7 @@
         var div = null;
         var tooltip = null;
 
-        var userQuota = { total: 1, used: 0 };
+        var userQuota = { total: 1, used: 0, freePerc: "100%" };
         var freeNode  = { "name": "Free space"
                         , "path": "FREESPACE"
                         , "size": 0
@@ -186,7 +186,11 @@
         var showFreeSpace = false;
 
         function percentageOfOccupiedSpace(node) {
-            return (node.size * 100 / filetree.size).toFixed(1) + '% of total occupied space';
+            return (node.size * 100 / filetree.size).toFixed(1) + "% of total occupied space";
+        }
+
+        function percentageOfQuota(node) {
+            return (node.size * 100 / userQuota.total).toFixed(1) + "% of your quota";
         }
 
         function isRoot(node) {
@@ -194,12 +198,16 @@
         }
 
         function updateAndShowToolTip(node) {
-            return tooltip.html(node.name + "<br/>" +
-                                humanFileSize(node.size) + "<br/>" +
-                                (isRoot(node) ? "" : node.path) + "<br/>" +
-                                (isRoot(node) ? "Root" : percentageOfOccupiedSpace(node)) + "<br/>" +
-                                ( node.is_dir ? "Folder<br/>" : "" ) )
-                          .style("visibility", "visible");
+            if (node == freeNode) {
+                return tooltip.html("Free space (" + userQuota.freePerc + "% of your quota)").style("visibility", "visible");
+            } else {
+                return tooltip.html(node.name + "<br/>" +
+                                    humanFileSize(node.size) + "<br/>" +
+                                    (isRoot(node) ? "" : node.path) + "<br/>" +
+                                    (isRoot(node) ? "Root" : showFreeSpace ? percentageOfQuota(node) : percentageOfOccupiedSpace(node)) + "<br/>" +
+                                    ( node.is_dir ? "Folder<br/>" : "" ) )
+                              .style("visibility", "visible");
+            }
         }
 
         // make sure the tooltip is never flush with the viewport border
@@ -240,7 +248,7 @@
             window.setInterval( poll, 3000 );
           });
 
-          setTimeout(updateLoadingText, 2000);
+          setTimeout(updateLoadingText, 3000);
 
           tooltip = d3.select("body")
               .append("div")
@@ -286,8 +294,7 @@
 
         function labelNode(node) {
             if (node == freeNode) {
-                var perc = ((1 - userQuota.used / userQuota.total) * 100).toFixed(1);
-                return "<span class='free-label'>(Free space: " +  perc + "%)<br/>" + humanFileSize(node.size) + "</span>";
+                return "<span class='free-label'>(Free space: " +  userQuota.freePerc + "%)<br/>" + humanFileSize(node.size) + "</span>";
             } else {
                 return enoughRoomForFileName(node) ? node.name : null;
             }
@@ -360,6 +367,7 @@
         }
 
         function userQuotaUpdated() {
+            userQuota.freePerc = (Math.max(1 - userQuota.used / userQuota.total, 0) * 100).toFixed(1) + "%";
             var usage = Math.min(userQuota.used / userQuota.total, 1);
             var quotaBar = document.getElementById("quota-bar");
             if (quotaBar) {
