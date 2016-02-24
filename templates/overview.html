@@ -90,7 +90,6 @@
                         .size([width, height])
                         .padding([15,5,5,5])
                         .sort(function(a,b) { return a.size - b.size; }) // big to small
-                        .sticky(true)
                         .value(function(d) { return d.size; });
 
         var maxdepth = 3;
@@ -137,6 +136,8 @@
               .style("z-index", "10")
               .style("visibility", "hidden")
               .attr("class", "d3-tip")
+
+          window.setInterval( poll, 3000 );
         }
 
         function position() {
@@ -168,7 +169,7 @@
 
         function draw_tree(root) {
             treemap_node = div.datum(root).selectAll(".node")
-              .data(treemap.nodes);
+              .data(treemap.nodes, function(d) {return d.path;});
 
             treemap_node
               .enter().append("div")
@@ -183,16 +184,7 @@
 
         function update_tree(root) {
             treemap_node = div.datum(root).selectAll(".node")
-              .data(treemap.nodes);
-
-            treemap_node
-              .text(function(d) { return enoughRoomForFileName(d) ? d.name : null; })
-              .attr("class", computeClass)
-              .call(position)
-              .style("background", function(d) { return color(d.depth); })
-
-            treemap_node
-               .exit().remove();
+              .data(treemap.nodes, function(d) {return d.path;});
 
             treemap_node
               .enter().append("div")
@@ -203,10 +195,22 @@
               .on("mouseover", updateAndShowToolTip)
               .on("mousemove", moveToolTip)
               .on("mouseout", function(){return tooltip.style("visibility", "hidden");});
+
+            treemap_node
+               .exit().remove();
+
+            treemap_node
+              .attr("class", computeClass)
+              .call(position)
+              .text(function(d) { return enoughRoomForFileName(d) ? d.name : null; })
         }
 
-        function update() {
+        var waitingForPollResponse = false;
+        function poll() {
+            if ( waitingForPollResponse ) return;
+            waitingForPollResponse = true;
             d3.json("/update_filetree", function(error, data) {
+                waitingForPollResponse = false;
                 if (error) throw error;
                 if (data.changed) {
                     filetree = data.tree;
