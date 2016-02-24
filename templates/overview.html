@@ -34,7 +34,36 @@
     }
     
     body {
+      font: 300 16px/1.5 "Helvetica Neue Light", "Helvetica Neue", Helvetica, Arial, sans-serif;
       margin: 0;
+    }
+
+    .top {
+        min-height: 56px;
+        position: relative;
+    }
+
+    .header-content-wrapper {
+        max-width: calc(100% - (30px * 2));
+        margin-right: auto;
+        margin-left: auto;
+        padding-right: 30px;
+        padding-left: 30px;
+        display: block;
+    }
+
+    .user-panel {
+        font: 300 14px/1.5 "Helvetica Neue Light", "Helvetica Neue", Helvetica, Arial, sans-serif;
+        float:right;
+        line-height: 52px;
+    }
+
+    .title {
+        font-size: 26px;
+        font-weight: 300;
+        line-height: 52px;
+        letter-spacing: -1px;
+        float: left;
     }
   </style>
   <title>Space Shepherd - {{ username }}</title>
@@ -79,7 +108,7 @@
 
         var viewport = getViewport();
 
-        var margin = {top: 100, right: 20, bottom: 20, left: 20},
+        var margin = {top: 66, right: 20, bottom: 20, left: 20},
             width  = viewport.w - margin.left - margin.right,
             height = viewport.h - margin.top - margin.bottom;
 
@@ -233,8 +262,15 @@
   </script>
 </head>
 <body onload="start()">
+    <header class="top">
+        <div class="header-content-wrapper">
+            <span class="title">Space Shepherd</span>
+            <nav class="user-panel">
+                {{username}} &nbsp; <a href="/logout">Log Out</a>
+            </nav>
+        </div>
+    </header>
   <div class="main-container">
-      <p>{{username}}'s Dropbox</p>
       <div id="canvas">
       </div>
   </div>
