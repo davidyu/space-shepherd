@@ -70,7 +70,7 @@ def dropbox_auth_start():
 @app.route('/overview')
 def overview():
     if 'access_token' not in session:
-        abort(400)
+        return redirect(url_for('index'))
     try:
         client = DropboxClient(session['access_token'])
     except ErrorResponse, e:
