@@ -19,9 +19,14 @@ function start() {
     userQuota.total = data.total;
     userQuotaUpdated();
     drawTree( data.tree );
+
+    // poll every three seconds
     window.setInterval( poll, 3000 );
   } );
 
+  // if we haven't deleted the loader in 3 seconds, it means we're
+  // probably crawling the tree for the first time (or grabbing a massive delta/
+  // update). Show the user what we're up to.
   setTimeout( updateLoadingText, 3000 );
 
   tooltip = d3.select( "body" )
@@ -314,19 +319,7 @@ function poll() {
   } );
 }
 
-function augmentTreeWithFreeNode( tree ) {
-  if ( tree.children[ tree.children.length-1 ] != freeNode ) {
-    tree.children.push( freeNode );
-  }
-}
-
-function deleteFreeNodeFromTree( tree ) {
-  // by construction, the last child of the root node is the free node, if it exists
-  if ( tree.children[ tree.children.length-1 ] == freeNode ) {
-    tree.children.pop();
-  }
-}
-
+// toggles the free space node visualization
 function toggleFreeSpace() {
   showFreeSpace = !showFreeSpace;
   var toggleButton = document.getElementById( "free-space-toggle-button" );
@@ -338,4 +331,17 @@ function toggleFreeSpace() {
     toggleButton.innerText = "Show free space";
   }
   updateTree( filetree );
+}
+
+function augmentTreeWithFreeNode( tree ) {
+  if ( tree.children[ tree.children.length-1 ] != freeNode ) {
+    tree.children.push( freeNode );
+  }
+}
+
+function deleteFreeNodeFromTree( tree ) {
+  // by construction, the last child of the root node is the free node, if it exists
+  if ( tree.children[ tree.children.length-1 ] == freeNode ) {
+    tree.children.pop();
+  }
 }
