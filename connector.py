@@ -87,7 +87,9 @@ def read(user_id, maxdepth):
             root_id, = result
             cur.execute("""SELECT * FROM Layout
                            WHERE root_id = %s AND path_depth < %s""", (root_id, maxdepth))
-            return treeify(cur.fetchall())
+            root = treeify(cur.fetchall())
+            root['name'] = '/'
+            return root
     except mdb.Error, e:
         print "Error %d: %s" % (e.args[0],e.args[1])
         con.rollback()
@@ -110,6 +112,7 @@ def treeify_h(rows, tab):
                , 'is_dir': is_dir
                , 'path': path
                , 'size': size }
+
         if is_dir:
             node['children'] = []
         tab[id] = node
