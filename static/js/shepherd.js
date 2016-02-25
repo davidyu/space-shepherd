@@ -138,10 +138,11 @@ function updateAndShowToolTip(node) {
                   .style( "visibility", "visible" );
   } else {
     return tooltip.html( node.name + "<br/>" +
+                         ( node.is_dir ? "Folder" + ( isRoot( node ) ? " (root)" : "" ) + "<br/>" : "" ) +
                          humanFileSize( node.size ) + "<br/>" +
-                         ( isRoot( node ) ? "" : node.path ) + "<br/>" +
-                         ( isRoot( node ) ? "Root" : showFreeSpace ? percentageOfQuota( node ) : percentageOfOccupiedSpace( node ) ) + "<br/>" +
-                         ( node.is_dir ? "Folder<br/>" : "" ) )
+                         ( isRoot( node ) ? "" : node.path + "<br/>" ) + 
+                         ( isRoot( node ) ? "" : showFreeSpace ? percentageOfQuota( node ) : percentageOfOccupiedSpace( node ) ) + "<br/>"
+                        )
                   .style( "visibility", "visible" );
   }
 }
@@ -250,8 +251,8 @@ function resizeWindow() {
   width  = viewport.w - margin.left - margin.right,
   height = viewport.h - margin.top - margin.bottom;
 
-  div.style("width", width + "px")
-     .style("height", height + "px");
+  treemapContainer.style("width", width + "px")
+                  .style("height", height + "px");
 
   treemap.size( [ width, height ] );
   updateTree( filetree );
