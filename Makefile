@@ -1,5 +1,7 @@
 .PHONY: configure update static
 
+SHELL=/bin/bash
+
 configure:
 	virtualenv flask
 
