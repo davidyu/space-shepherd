@@ -326,10 +326,10 @@ function toggleFreeSpace() {
   var toggleButton = document.getElementById( "free-space-toggle-button" );
   if (showFreeSpace) {
     augmentTreeWithFreeNode( filetree );
-    toggleButton.innerText = "Hide free space";
+    toggleButton.innerHTML = "Hide free space";
   } else {
     deleteFreeNodeFromTree( filetree );
-    toggleButton.innerText = "Show free space";
+    toggleButton.innerHTML = "Show free space";
   }
   updateTree( filetree );
 }
