@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <link rel="stylesheet" type="text/css" href="/static/css/loader.css">
   <meta charset="utf-8">
   <style>
     .node {
@@ -123,7 +124,7 @@
         position: absolute;
         top: 0; left: 0; bottom: 0; right: 0;
         text-align: center;
-        height: 100px;
+        height: 40px;
         width: 70%;
     }
   </style>
@@ -272,9 +273,9 @@
         }
 
         function updateLoadingText() {
-            var loader = document.getElementById("loader");
-            if (loader) {
-                loader.innerHTML += "<br/><p>Hang tight, we're crawling your file tree for the first time. This could take a couple of minutes...</p>"
+            var caption = document.getElementById("loader-caption");
+            if (caption) {
+                caption.innerHTML += "<p>Hang tight, we're crawling your file tree for the first time. This could take a couple of minutes...</p>"
             }
         }
 
@@ -461,7 +462,13 @@
       <div id="canvas">
       </div>
       <div id="loader">
-        <img src="/static/img/ring-alt.svg" alt="Loading your file tree...">
+        <div class="sk-folding-cube">
+          <div class="sk-cube1 sk-cube"></div>
+          <div class="sk-cube2 sk-cube"></div>
+          <div class="sk-cube4 sk-cube"></div>
+          <div class="sk-cube3 sk-cube"></div>
+        </div>
+        <div id="loader-caption"></div>
       </div>
   </div>
   </body>
