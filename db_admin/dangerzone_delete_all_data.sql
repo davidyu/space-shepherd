@@ -1,3 +1,2 @@
 DELETE FROM Users;
 DELETE FROM Layout;
-DELETE FROM Files;

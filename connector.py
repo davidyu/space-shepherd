@@ -85,8 +85,8 @@ def read(user_id, maxdepth):
             return None
         else:
             root_id, = result
-            cur.execute("""SELECT * FROM Layout JOIN Files ON Layout.file_id = Files.id
-                           WHERE Layout.root_id = %s AND Layout.path_depth < %s""", (root_id, maxdepth))
+            cur.execute("""SELECT * FROM Layout
+                           WHERE root_id = %s AND path_depth < %s""", (root_id, maxdepth))
             return treeify(cur.fetchall())
     except mdb.Error, e:
         print "Error %d: %s" % (e.args[0],e.args[1])
@@ -105,8 +105,8 @@ def treeify(rows):
 def treeify_h(rows, tab):
     # build nodes first
     for row in rows:
-        id, root_id, parent_id, path, _, file_id, _, is_dir, name, size = row
-        node = { 'name': name
+        id, root_id, parent_id, path, _, is_dir, size = row
+        node = { 'name': basename(path)
                , 'is_dir': is_dir
                , 'path': path
                , 'size': size }
@@ -115,11 +115,11 @@ def treeify_h(rows, tab):
         tab[id] = node
     # now build hiearchical tree structure
     for row in rows:
-        id, _, parent_id, _, _, _, _, _, _, _ = row
+        id, _, parent_id, _, _, _, _ = row
         if parent_id is not None:
             tab[parent_id]['children'].append(tab[id])
     # return the root
-    _, root_id, _, _, _, _, _, _, _, _ = rows[0]
+    _, root_id, _, _, _, _, _ = rows[0]
     return tab[root_id]
 
 # basically mkdir -p
@@ -130,14 +130,12 @@ def add_parent_folders(cur, path, root_id):
         if result is None:
             # add all parents before me first
             parent_id, parent_depth = add_parent_folders(cur, dirname(path), root_id)
-            cur.execute("""INSERT INTO Files(dir, name, size) VALUES(%s,%s,%s)""", (True, basename(path), 0))
+            cur.execute("""INSERT INTO Layout(path, path_depth, root_id, parent_id, dir, size)
+                           VALUES(%s,%s,%s,%s,%s,%s)""", (path, parent_depth + 1, root_id, parent_id, True, 0))
             file_id = cur.lastrowid
-            cur.execute("""INSERT INTO Layout(path, path_depth, root_id, parent_id, file_id) VALUES(%s,%s,%s,%s,%s)""", (path, parent_depth + 1, root_id, parent_id, file_id))
-            root_id = cur.lastrowid
             return file_id, parent_depth + 1
         else:
-            file_id, path_depth = result
-            return file_id, path_depth
+            return result
     else:
         return root_id, 0
 
@@ -145,10 +143,9 @@ def add_parent_folders(cur, path, root_id):
 # assumes entries for all parent folders in path exist (IE:
 # we called add_parent_folders for path)
 def adjust_parent_folder_size(cur, path, delta, root_id):
-    cur.execute("""UPDATE Files
-                   INNER JOIN Layout ON Layout.file_id = Files.id
-                   SET Files.size = Files.size + (%s)
-                   WHERE Layout.root_id = %s AND Layout.path = %s""", (delta, root_id, path))
+    cur.execute("""UPDATE Layout
+                   SET size = size + (%s)
+                   WHERE root_id = %s AND path = %s""", (delta, root_id, path))
 
     if dirname(path) is not path: # while we haven't reached the root (/)
         adjust_parent_folder_size(cur, dirname(path), delta, root_id)
@@ -166,9 +163,9 @@ def update_path(user_id, path, metadata):
         parent_id, parent_depth = add_parent_folders(cur, dirname(path), root_id)
 
         # grab file_id for the file specified at given path (file_id will be None if it doesn't exist)
-        cur.execute("""SELECT Files.id, Files.dir
-                       FROM Layout INNER JOIN Files ON Layout.file_id = Files.id
-                       WHERE Layout.root_id = %s AND Layout.path = %s""", (root_id, path))
+        cur.execute("""SELECT id, dir
+                       FROM Layout
+                       WHERE root_id = %s AND path = %s""", (root_id, path))
 
         file_result = cur.fetchone()
 
@@ -178,29 +175,26 @@ def update_path(user_id, path, metadata):
 
                 if is_dir:
                     # just update metadata (in our case, just name) and don't touch children
-                    cur.execute("""UPDATE Files
-                                   SET name = %s
-                                   WHERE id = %s""", (basename(path), file_id))
+                    cur.execute("""UPDATE Layout
+                                   SET path = %s
+                                   WHERE id = %s""", (path, file_id))
                 else:
                     # delete file and replace with folder
                     delete_path_h(cur, root_id, path)
                     # default size to 0
-                    cur.execute("""INSERT INTO Files(dir, name, size) VALUES(%s,%s,%s)""", (True, basename(path), 0))
-                    file_id = cur.lastrowid
-                    cur.execute("""INSERT INTO Layout(path, path_depth, root_id, parent_id, file_id) VALUES(%s,%s,%s,%s,%s)""", (path, parent_depth + 1, root_id, parent_id, file_id))
+                    cur.execute("""INSERT INTO Layout(path, path_depth, root_id, parent_id, dir, size)
+                                   VALUES(%s,%s,%s,%s,%s,%s)""", (path, parent_depth + 1, root_id, parent_id, True, 0))
             # no file at path, just add folder
             else:
-                cur.execute("""INSERT INTO Files(dir, name, size) VALUES(%s,%s,%s)""", (True, basename(path), 0))
-                file_id = cur.lastrowid
-                cur.execute("""INSERT INTO Layout(path, path_depth, root_id, parent_id, file_id) VALUES(%s,%s,%s,%s,%s)""", (path, parent_depth + 1, root_id, parent_id, file_id))
+                cur.execute("""INSERT INTO Layout(path, path_depth, root_id, parent_id, dir, size)
+                               VALUES(%s,%s,%s,%s,%s,%s)""", (path, parent_depth + 1, root_id, parent_id, True, 0))
         else:
             # delete whatever we have at path with file
             if file_result is not None:
                 delete_path_h(cur, root_id, path)
 
-            cur.execute("""INSERT INTO Files(dir, name, size) VALUES(%s,%s,%s)""", (False, basename(path), metadata['bytes']))
-            file_id = cur.lastrowid
-            cur.execute("""INSERT INTO Layout(path, path_depth, root_id, parent_id, file_id) VALUES(%s,%s,%s,%s,%s)""", (path, parent_depth + 1, root_id, parent_id, file_id))
+            cur.execute("""INSERT INTO Layout(path, path_depth, root_id, parent_id, dir, size)
+                           VALUES(%s,%s,%s,%s,%s,%s)""", (path, parent_depth + 1, root_id, parent_id, False, metadata['bytes']))
 
             # update the sizes for all parent folders recursively up to the root
             adjust_parent_folder_size(cur, dirname(path), metadata['bytes'], root_id)
@@ -217,9 +211,8 @@ def update_path(user_id, path, metadata):
 
 # deletes path for a given root_id (assumes we're passing in a DB cursor)l
 def delete_path_h(cur, root_id, path):
-    
-    cur.execute("""SELECT Files.size FROM Layout INNER JOIN Files ON Layout.file_id = Files.id\
-                   WHERE Layout.root_id = %s AND Layout.path = %s""", (root_id, path))
+    cur.execute("""SELECT size FROM Layout
+                   WHERE root_id = %s AND path = %s""", (root_id, path))
     size_result = cur.fetchone()
 
     # decrement size of parent folders
@@ -228,12 +221,10 @@ def delete_path_h(cur, root_id, path):
         adjust_parent_folder_size(cur, dirname(path), -deleted_size, root_id)
 
     # delete file/folder
-    cur.execute("""DELETE Layout.*, Files.* FROM Layout INNER JOIN Files ON Layout.file_id = Files.id
-                   WHERE Layout.root_id = %s AND Layout.path = %s""", (root_id, path))
+    cur.execute("""DELETE FROM Layout WHERE root_id = %s AND path = %s""", (root_id, path))
 
     # delete all children of folder
-    cur.execute("""DELETE Layout.*, Files.* FROM Layout INNER JOIN Files ON Layout.file_id = Files.id
-                   WHERE Layout.root_id = %s AND Layout.path LIKE %s""", (root_id, path + "/%",))
+    cur.execute("""DELETE FROM Layout WHERE root_id = %s AND path LIKE %s""", (root_id, path + "/%"))
 
 # deletes the file or folder (and all children) at the given path
 # assumes the user exists in our database
@@ -267,8 +258,7 @@ def clear(user_id):
         # get root_id from User table and delete all corresponding entries in the File and Layout table
         cur.execute("""SELECT root_id FROM Users WHERE user_id = %s""", (user_id,))
         root_id, = cur.fetchone()
-        cur.execute("""DELETE Layout.*, Files.* FROM Layout INNER JOIN Files ON Layout.file_id = Files.id\
-                       WHERE Layout.root_id = %s AND Layout.id <> %s""", (root_id, root_id))
+        cur.execute("""DELETE FROM Layout WHERE root_id = %s AND id <> %s""", (root_id, root_id))
         con.commit()
     except mdb.Error, e:
         print "Error %d: %s" % (e.args[0],e.args[1])
@@ -308,10 +298,8 @@ def store_tree(cur, root):
     #    a unique root directory)
     # 2. inserts the root dir into the layout table (and update root_id column after insertion)
     # 3. recursively inserts all children of the root into the file and layout table
-    cur.execute("""INSERT INTO Files(dir, name, size) VALUES(%s,%s,%s)""", (root['is_dir'], root['name'], root['size']))
-    file_id = cur.lastrowid
-
-    cur.execute("""INSERT INTO Layout(path, path_depth, file_id) VALUES(%s,%s,%s)""", (root['path'], 0, file_id))
+    cur.execute("""INSERT INTO Layout(path, path_depth, dir, size)
+                   VALUES(%s,%s,%s,%s)""", (root['path'], 0, root['is_dir'], root['size']))
     root_id = cur.lastrowid
 
     cur.execute("""UPDATE Layout SET root_id = %s WHERE id = %s""", (root_id, root_id))
@@ -324,16 +312,12 @@ def store_tree(cur, root):
 # recursively stores the filetree into the  file table
 # TODO be mindful of preexisting folders (EG: a shared folder)
 # right now all shared folders are blissfully duplicated
-
 def store_tree_r(cur, node, parent_id, parent_depth, root_id):
     is_dir = node['is_dir']
-    if is_dir:
-        cur.execute("""INSERT INTO Files(dir, name, size) VALUES(%s,%s,%s)""", (node['is_dir'], node['name'], node['size']))
-    else:
-        cur.execute("""INSERT INTO Files(dir, name, size) VALUES(%s,%s,%s)""", (False, node['name'], node['size']))
 
     file_id = cur.lastrowid
-    cur.execute("""INSERT INTO Layout(root_id, parent_id, path, path_depth, file_id) VALUES(%s,%s,%s,%s,%s)""", (root_id, parent_id, node['path'], parent_depth + 1, file_id))
+    cur.execute("""INSERT INTO Layout(root_id, parent_id, path, path_depth, dir, size)
+                   VALUES(%s,%s,%s,%s,%s,%s)""", (root_id, parent_id, node['path'], parent_depth + 1, node['is_dir'], node['size']))
 
     new_parent_id = cur.lastrowid 
 
