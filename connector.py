@@ -211,20 +211,21 @@ def update_path(user_id, path, metadata):
 
 # deletes path for a given root_id (assumes we're passing in a DB cursor)l
 def delete_path_h(cur, root_id, path):
-    cur.execute("""SELECT size FROM Layout
+    cur.execute("""SELECT dir, size FROM Layout
                    WHERE root_id = %s AND path = %s""", (root_id, path))
     size_result = cur.fetchone()
 
     # decrement size of parent folders
     if size_result:
-        deleted_size, = size_result
+        is_dir, deleted_size = size_result
         adjust_parent_folder_size(cur, dirname(path), -deleted_size, root_id)
 
-    # delete file/folder
-    cur.execute("""DELETE FROM Layout WHERE root_id = %s AND path = %s""", (root_id, path))
+        # delete file/folder
+        cur.execute("""DELETE FROM Layout WHERE root_id = %s AND path = %s""", (root_id, path))
 
-    # delete all children of folder
-    cur.execute("""DELETE FROM Layout WHERE root_id = %s AND path LIKE %s""", (root_id, path + "/%"))
+        # delete all children of folder
+        if is_dir:
+            cur.execute("""DELETE FROM Layout WHERE root_id = %s AND path LIKE %s""", (root_id, path + "/%"))
 
 # deletes the file or folder (and all children) at the given path
 # assumes the user exists in our database
