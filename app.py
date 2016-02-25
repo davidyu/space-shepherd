@@ -66,6 +66,7 @@ def dropbox_auth_start():
     authorize_url = get_dropbox_auth_flow().start()
     return redirect(authorize_url)
 
+# main page router
 @app.route('/overview')
 def overview():
     if 'access_token' not in session:
