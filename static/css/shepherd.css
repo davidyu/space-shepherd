@@ -1,0 +1,123 @@
+body {
+    font: 300 16px/1.5 "Helvetica Neue Light", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    margin: 0;
+}
+
+.node {
+    border: solid 1px black;
+    font: 10px sans-serif;
+    line-height: 12px;
+    overflow: hidden;
+    position: absolute;
+    text-indent: 2px;
+}
+
+.free {
+    background: rgba(200, 200, 200, 1) !important;
+    display: table;
+    text-align: center;
+}
+
+.free > .free-label {
+    display: table-cell;
+    vertical-align: middle;
+}
+
+#free-space-toggle-button {
+    font-size: 17px/1.5;
+    /* bevel for depth */
+    box-shadow:rgba(256,256,256,0.5) 1px 1px 0 0px inset, rgba(0,0,0,0.05) -1px -1px 0 0px inset;
+    border: solid 1px black;
+    color: rgb(0,0,0);
+    text-decoration: none;
+    line-height: 20px;
+    padding: 10px 5px;
+    background: rgb(179, 205, 227);
+    display:inline-block;
+    width: 120px;
+    text-align:center;
+    margin-right: 10px;
+}
+
+#free-space-toggle-button:hover {
+    box-shadow:rgba(256,256,256,0.5) 2px 2px 0 0px inset, rgba(0,0,0,0.1) -2px -2px 0 0px inset;
+    background: rgb(204, 231, 255);
+}
+
+#free-space-toggle-button:active {
+    box-shadow:rgba(256,256,256,0.5) -2px -2px 0 0px inset, rgba(0,0,0,0.1) 2px 2px 0 0px inset;
+    padding-top:11px;
+    padding-left:6px;
+    padding-bottom:9px;
+    padding-right:4px;
+}
+
+.folder {
+    /* bevel for depth */
+    box-shadow: rgba(256,256,256,0.5) 1px 1px 0 0px inset, rgba(0,0,0,0.05) -1px -1px 0 0px inset;
+    white-space: nowrap;
+}
+
+.folder:hover {
+    /* subtly accentuate bevels */
+    box-shadow: rgba(256,256,256,0.5) 2px 2px 0 0px inset, rgba(0,0,0,0.1) -2px -2px 0 0px inset;
+}
+
+.folder:active {
+    /* invert bevels for depressed look */
+    box-shadow: rgba(256,256,256,0.5) -2px -2px 0 0px inset, rgba(0,0,0,0.1) 2px 2px 0 0px inset;
+    text-indent: 3px;
+    padding-top: 1px;
+}
+
+.d3-tip {
+    font: 10px sans-serif;
+    line-height: 1;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.8);
+    color: #fff;
+    border-radius: 2px;
+}
+
+.hidden {
+    display: none !important;
+}
+
+.top {
+    min-height: 56px;
+    position: relative;
+    margin: 8px;
+}
+
+.header-content-wrapper {
+    display: table;
+    max-width: calc(100% - (30px * 2));
+    margin-right: auto;
+    margin-left: auto;
+    padding-right: 30px;
+    padding-left: 30px;
+    display: block;
+}
+
+.user-panel {
+    font: 300 14px/1.5 "Helvetica Neue Light", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    float:right;
+    line-height: 52px;
+}
+
+.title {
+    font-size: 26px;
+    font-weight: 300;
+    line-height: 52px;
+    letter-spacing: -1px;
+    float: left;
+}
+
+#loader {
+    margin: auto;
+    position: absolute;
+    top: 0; left: 0; bottom: 0; right: 0;
+    text-align: center;
+    height: 40px;
+    width: 70%;
+}
