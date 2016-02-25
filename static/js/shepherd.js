@@ -206,7 +206,7 @@ function computeClass( node ) {
 
 function labelNode( node ) {
   if ( node == freeNode ) {
-    return "<span class='free-label'>(Free space: " +  userQuota.freePerc + "%)<br/>" + humanFileSize( node.size ) + "</span>";
+    return "<span class='free-label'>(Free space: " +  userQuota.freePerc + ")<br/>" + humanFileSize( node.size ) + "</span>";
   } else {
     return enoughRoomForFileName( node ) ? node.name : null;
   }
