@@ -12,16 +12,14 @@ function start() {
                        .style( "left", margin.left + "px" )
                        .style( "top", margin.top + "px" );
 
-  d3.json("/get_filetree", function( error, data ) {
+  d3.json( "/get_filetree", function( error, data ) {
     if ( error ) throw error;
     filetree = data.tree;
     userQuota.used = data.used;
     userQuota.total = data.total;
     userQuotaUpdated();
     drawTree( data.tree );
-
-    // poll every three seconds
-    window.setInterval( poll, 3000 );
+    longPoll( data.cursor );
   } );
 
   // if we haven't deleted the loader in 3 seconds, it means we're
@@ -298,6 +296,21 @@ function userQuotaUpdated() {
   freeNode.size = Math.max( 0, userQuota.total - userQuota.used );
 }
 
+function longPoll( cursor ) {
+  d3.json( "https://notify.dropboxapi.com/1/longpoll_delta?cursor=" + cursor, function( error, data ) {
+    if ( error ) throw error;
+    if ( data.changes ) {
+      poll();
+    } else {
+      if ( data.backoff ) {
+        setTimeout( function() { longPoll( cursor ); }, data.backoff * 1000 );
+      } else {
+        longPoll( cursor );
+      }
+    }
+  } );
+}
+
 var waitingForPollResponse = false;
 function poll() {
   if ( waitingForPollResponse ) return;
@@ -305,18 +318,17 @@ function poll() {
   d3.json( "/update_filetree", function( error, data ) {
     waitingForPollResponse = false;
     if ( error ) throw error;
-    if ( data.changed ) {
-      if ( showFreeSpace ) {
-        augmentTreeWithFreeNode( data.tree );
-      } else {
-        deleteFreeNodeFromTree( data.tree );
-      }
-      filetree = data.tree;
-      userQuota.used = data.used;
-      userQuota.total = data.total;
-      userQuotaUpdated();
-      updateTree( data.tree );
+    if ( showFreeSpace ) {
+      augmentTreeWithFreeNode( data.tree );
+    } else {
+      deleteFreeNodeFromTree( data.tree );
     }
+    filetree = data.tree;
+    userQuota.used = data.used;
+    userQuota.total = data.total;
+    userQuotaUpdated();
+    updateTree( data.tree );
+    longPoll( data.cursor );
   } );
 }
 

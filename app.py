@@ -104,12 +104,14 @@ def get_filetree():
         abort(400)
     client = DropboxClient(session['access_token'])
     user_id = session['user_id']
+    cursor = None
     if DBC.user_exists(user_id):
         result = update_filetree()
         if result['changed']:
             cached_tree = result['tree']
         else:
             cached_tree = DBC.read(user_id, MAX_DIRECTORY_DEPTH)
+        cursor = result['cursor']
     else:
         tree, cursor = crawl_all_deltas(client)
         DBC.store(session['user_id'], tree, cursor)
@@ -117,9 +119,10 @@ def get_filetree():
 
     used, total = get_quota_usage(client)
 
-    result = { 'tree' : cached_tree
-             , 'used' : used
-             , 'total': total }
+    result = { 'tree'  : cached_tree
+             , 'used'  : used
+             , 'total' : total
+             , 'cursor': cursor }
 
     return jsonify(result)
 
@@ -172,10 +175,9 @@ def update_filetree():
 
     DBC.set_delta_cursor(user_id, cursor)
 
-    result = { 'changed': changed }
-
-    if changed:
-        result['tree'] = DBC.read(session['user_id'], MAX_DIRECTORY_DEPTH)
+    result = { 'changed': changed
+             , 'tree'   : DBC.read(session['user_id'], MAX_DIRECTORY_DEPTH)
+             , 'cursor' : cursor }
 
     return result
     
