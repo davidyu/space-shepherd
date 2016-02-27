@@ -224,6 +224,7 @@ function drawTree( root ) {
   // the tree for the first time
   node.enter()
       .append( "div" )
+      .style( 'opacity', 0 ) 
       .attr( "class", computeClass )
       .call(position)
       .style( "background", function( d ) { return color( d.depth ); } )
@@ -231,6 +232,10 @@ function drawTree( root ) {
       .on( "mouseover", updateAndShowToolTip )
       .on( "mousemove", moveToolTip )
       .on( "mouseout", hideToolTip );
+
+  node.transition()
+      .duration( 500 )
+      .style( 'opacity', 1 )
 
   window.addEventListener( 'resize', resizeAfterDelay );
 }
