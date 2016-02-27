@@ -167,10 +167,10 @@ def update_filetree():
         for entry in delta['entries']:
             [path, metadata] = entry
             if metadata is None:
-                print "processed a deletion entry"
+                # print "processed a deletion entry"
                 DBC.delete_path(user_id, path)
             else:
-                print "processed an update entry"
+                # print "processed an update entry"
                 DBC.update_path(user_id, metadata['path'], metadata)
 
     DBC.set_delta_cursor(user_id, cursor)
