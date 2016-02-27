@@ -146,12 +146,18 @@ def add_parent_folders(cur, path, root_id):
 # assumes entries for all parent folders in path exist (IE:
 # we called add_parent_folders for path)
 def adjust_parent_folder_size(cur, path, delta, root_id):
-    cur.execute("""UPDATE Layout
-                   SET size = size + (%s)
-                   WHERE root_id = %s AND path = %s""", (delta, root_id, path))
+    # build all parent folders
+    folders = [path]
+    while dirname(path) is not path:
+        path = dirname(path)
+        folders.append(path)
 
-    if dirname(path) is not path: # while we haven't reached the root (/)
-        adjust_parent_folder_size(cur, dirname(path), delta, root_id)
+    # build and execute SQL query
+    subs = ','.join('%s' for _ in folders)
+    query = """UPDATE Layout SET size = size + (%s) WHERE root_id = %s AND path IN ({})""".format(subs)
+    args = [delta,root_id]
+    args.extend(folders)
+    cur.execute(query, tuple(args))
 
 # assumes the user exists in our database
 def update_path(user_id, path, metadata):
