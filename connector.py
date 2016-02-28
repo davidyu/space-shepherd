@@ -10,6 +10,7 @@ from secrets import *
 
 from pudb import set_trace
 
+# shorthand
 def connect():
     return mdb.connect( host        = 'localhost'
                       , user        = MYSQL_USERNAME
@@ -18,7 +19,7 @@ def connect():
                       , charset     = 'utf8'
                       , use_unicode = True )
 
-# updates the cursor for the user if applicable
+# updates the delta cursor for some given user if he/she exists in our DB
 def set_delta_cursor(user_id, delta_cursor):
     try:
         con = connect()
@@ -33,8 +34,8 @@ def set_delta_cursor(user_id, delta_cursor):
         if con:
             con.close()
 
-# returns the cursor for the user if applicable
-# returns None if the user or cursor doesn't exist
+# returns the delta cursor for some given user
+# returns the cursor for the user if he/she exists in our DB, otherwise return None
 def get_delta_cursor(user_id):
     try:
         con = connect()
@@ -73,8 +74,8 @@ def user_exists(user_id):
         if con:
             con.close()
 
-# if we have a local cache for the user (identified by user_id),
-# return the cache, otherwise return None
+# if we have a local file tree cache for the user,
+# return it, otherwise return None
 def read(user_id, maxdepth = None):
     try:
         con = connect()
@@ -102,13 +103,16 @@ def read(user_id, maxdepth = None):
         if con:
             con.close()
 
-# treeifies the db cache
+# treeifies seeuqntial DB data that corresponds toa filetree
+# for actual logic, see treeify_h
 def treeify(rows):
     tab = {}
     return treeify_h(rows, tab)
 
-# two passes: builds disconnected nodes first, then constructs the
-# tree structure given the disconnected nodes
+# two passes: first, construct disconnected nodes in a table indexed by
+# their node ids, then construct the tree structure given this intermediate table
+# this is because we identify parents by ids, and want to make this connection step
+# faster than doing a linear search in rows
 def treeify_h(rows, tab):
     # build nodes first
     for row in rows:
@@ -130,7 +134,7 @@ def treeify_h(rows, tab):
     _, root_id, _, _, _, _, _ = rows[0]
     return tab[root_id]
 
-# basically mkdir -p
+# basically mkdir -p in our DB's Layout table
 def add_parent_folders(cur, path, root_id):
     if dirname(path) is not path: # while we haven't reached the root (/)
         cur.execute("""SELECT id, path_depth FROM Layout WHERE root_id = %s AND path = %s""", (root_id, path))
@@ -147,9 +151,9 @@ def add_parent_folders(cur, path, root_id):
     else:
         return root_id, 0
 
-# increments the parent folder size by some given number
-# assumes entries for all parent folders in path exist (IE:
-# we called add_parent_folders for path)
+# updates the parent folder size in the Layout table by some
+# given amount. Assumes entries for all parent folders in path exist
+# (IE: we called add_parent_folders for path)
 def adjust_parent_folder_size(cur, path, delta, root_id):
     # build all parent folders
     folders = [path]
@@ -164,7 +168,9 @@ def adjust_parent_folder_size(cur, path, delta, root_id):
     args.extend(folders)
     cur.execute(query, tuple(args))
 
-# assumes the user exists in our database
+# the update logic for a path according to the Dropbox delta() API
+# applies updated file metadata directly to the DB. We only want to
+# do this if the number of updates are small
 def update_path(user_id, path, metadata):
     try:
         con = connect()
@@ -222,27 +228,8 @@ def update_path(user_id, path, metadata):
         if con:
             con.close()
 
-
-# deletes path for a given root_id (assumes we're passing in a DB cursor)l
-def delete_path_h(cur, root_id, path):
-    cur.execute("""SELECT dir, size FROM Layout
-                   WHERE root_id = %s AND path = %s""", (root_id, path))
-    size_result = cur.fetchone()
-
-    # decrement size of parent folders
-    if size_result:
-        is_dir, deleted_size = size_result
-        adjust_parent_folder_size(cur, dirname(path), -deleted_size, root_id)
-
-        # delete file/folder
-        cur.execute("""DELETE FROM Layout WHERE root_id = %s AND path = %s""", (root_id, path))
-
-        # delete all children of folder
-        if is_dir:
-            cur.execute("""DELETE FROM Layout WHERE root_id = %s AND path LIKE %s""", (root_id, path + "/%"))
-
 # deletes the file or folder (and all children) at the given path
-# assumes the user exists in our database
+# for actual logic, see delete_path_h()
 def delete_path(user_id, path):
     try:
         con = connect()
@@ -263,8 +250,28 @@ def delete_path(user_id, path):
         if con:
             con.close()
 
+# the deletion logic for a path according to the Dropbox delta() API
+# the deletion is applied directly to the DB. We only want to call this
+# if the number of paths to delete are small.
+def delete_path_h(cur, root_id, path):
+    cur.execute("""SELECT dir, size FROM Layout
+                   WHERE root_id = %s AND path = %s""", (root_id, path))
+    size_result = cur.fetchone()
+
+    # decrement size of parent folders
+    if size_result:
+        is_dir, deleted_size = size_result
+        adjust_parent_folder_size(cur, dirname(path), -deleted_size, root_id)
+
+        # delete file/folder
+        cur.execute("""DELETE FROM Layout WHERE root_id = %s AND path = %s""", (root_id, path))
+
+        # delete all children of folder
+        if is_dir:
+            cur.execute("""DELETE FROM Layout WHERE root_id = %s AND path LIKE %s""", (root_id, path + "/%"))
+
 # clears the filetree for a given user
-# assumes the user exists in our database
+# basically the reset=True logic as described in the Dropbox delta() API
 def clear(user_id):
     try:
         con = connect()
@@ -283,7 +290,7 @@ def clear(user_id):
         if con:
             con.close()
 
-# stores the filetree for a given user
+# creates a new user and writes the given filetree and cursor to our DB as cache
 def store(user_id, file_tree, cursor):
     try:
         con = connect()
@@ -305,7 +312,7 @@ def store(user_id, file_tree, cursor):
         if con:
             con.close()
 
-# overwrites the filetree for a given user (which must exist)
+# overwrites the filetree and cursor for an existing user
 def overwrite(user_id, file_tree, cursor):
     try:
         con = connect()
@@ -356,12 +363,11 @@ def store_tree(cur, root):
     return root_id
 
 # recursively stores the filetree into the  file table
-# TODO be mindful of preexisting folders (EG: a shared folder)
 # right now all shared folders are blissfully duplicated
+# TODO be mindful of preexisting folders (EG: a shared folder)
 def store_tree_r(cur, node, parent_id, parent_depth, root_id):
     is_dir = node['is_dir']
 
-    file_id = cur.lastrowid
     cur.execute("""INSERT INTO Layout(root_id, parent_id, path, path_depth, dir, size)
                    VALUES(%s,%s,%s,%s,%s,%s)""", (root_id, parent_id, node['path'], parent_depth + 1, node['is_dir'], node['size']))
 

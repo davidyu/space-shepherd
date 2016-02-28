@@ -1,6 +1,4 @@
-# core routing logic for the Space Shepherd app
-
-import logging
+# core routing and app logic for Space Shepherd
 
 from dropbox.client import DropboxOAuth2Flow, DropboxClient
 from flask import abort, Flask, jsonify, redirect, request, render_template, session, url_for
@@ -13,12 +11,15 @@ from pudb import set_trace
 app = Flask(__name__)
 app.secret_key = FLASK_SECRET_KEY
 
-@app.route('/')
-def index():
-    if 'access_token' in session:
-        return redirect(url_for('overview'))
-    else:
-        return render_template('index.html')
+# how many hierarchical levels do we return to the client?
+MAX_DIRECTORY_DEPTH = 4
+# how many delta entries does it take for us to prefer doing work in memory,
+# as opposed to directly updating the DB for each entry?
+DELTA_DO_WORK_IN_MEMORY_THRESHOLD = 100
+
+#####################
+# START DROPBOX OAUTH
+#####################
 
 @app.route('/login')
 def login():
@@ -66,7 +67,21 @@ def dropbox_auth_start():
     authorize_url = get_dropbox_auth_flow().start()
     return redirect(authorize_url)
 
-# main page router
+###################
+# END DROPBOX OAUTH
+###################
+
+# splash page router; renders index.html or redirects to app page
+# depending on whether or not you are logged in and authenticated.
+@app.route('/')
+def index():
+    if 'access_token' in session:
+        return redirect(url_for('overview'))
+    else:
+        return render_template('index.html')
+
+# main 'app' page router; renders overview.html or redirects to home page
+# depending on whether or not you are logged in and authenticated.
 @app.route('/overview')
 def overview():
     if 'access_token' not in session:
@@ -82,6 +97,8 @@ def overview():
     return render_template('overview.html', username=session['username'])
 
 # prunes the given tree to be at most maxdepth levels
+
+# returns the pruned tree
 def prune(tree, maxdepth):
     return prune_r(tree, maxdepth, 1)
 
@@ -96,8 +113,15 @@ def prune_r(node, maxdepth, curdepth):
 
     return node
 
-MAX_DIRECTORY_DEPTH = 4
+# response to the initial client call to get the file tree
+# checks our DB for the filetree cache, if it exists, update
+# and return it. If not, build it via crawl_all_deltas()
 
+# returns a JSON object with the following keys:
+# 'tree'   : the most recent filetree
+# 'cursor' : the most recent cursor we have for the user for long polling
+# 'used'   : the tutoal number of bytes used
+# 'total'  : the user quota in bytes
 @app.route('/get_filetree')
 def get_filetree():
     if 'access_token' not in session:
@@ -124,9 +148,14 @@ def get_filetree():
     return jsonify(result)
 
 # updates the file tree using Dropbox's delta API
-# returns a dictionary with two keys:
-# 'changed', which correspond to True if the tree was successfully updated
-# 'tree', which will be the updated tree if applicable (and None otherwise)
+# for actual update logic, see update_filetree()
+
+# returns a JSON object with the following keys:
+# 'changed'          : True if the tree has been updated since the last call to update_filetree
+# 'tree'             : the updated or current filetree tree, depending on whether or not it changed
+# 'cursor'           : the updated or current cursor of the user for long polling
+# 'used' (optional)  : only exists if changed is True; the total number of bytes used
+# 'total' (optional) : only exists if changed is True; the user quota in bytes
 @app.route('/update_filetree')
 def update_filetree_json():
     result = update_filetree()
@@ -139,8 +168,11 @@ def update_filetree_json():
         
     return jsonify(result)
 
-DELTA_DO_WORK_IN_MEMORY_THRESHOLD = 100
+# updates the file tree using Dropbox's delta API
 
+# returns a dictionary with two keys:
+# 'changed': True if the tree has been updated since the last call to update_filetree
+# 'tree'   : the updated or current filetree tree, depending on whether or not it changed
 def update_filetree():
     if 'access_token' not in session:
         abort(400)
@@ -169,6 +201,8 @@ def update_filetree():
 
         entries = delta['entries']
         
+        # do we want batch our work in memmory, or flush directly to the DB?
+        # depends on the number of entries; see DELTA_DO_WORK_IN_MEMORY_THRESHOLD
         if do_work_in_memory or len(entries) > DELTA_DO_WORK_IN_MEMORY_THRESHOLD:
             do_work_in_memory = True
             if memcache['tree'] is None:
@@ -180,23 +214,21 @@ def update_filetree():
             for entry in entries:
                 [path, metadata] = entry
                 if metadata is None:
-                    # print "processed a deletion entry"
                     DBC.delete_path(user_id, path)
                 else:
-                    # print "processed an update entry"
                     DBC.update_path(user_id, metadata['path'], metadata)
             # print "processed %s entries by directly updating DB" % len(entries)
 
         has_more = delta['has_more']
         cursor = delta['cursor']
 
-    # set_trace()
     tree = None
     if do_work_in_memory:
-        # write our in-memory tree into the DB
+        # flush our in-memory tree into the DB
         DBC.overwrite(user_id, memcache['tree'], cursor)
         tree = prune(memcache['tree'], MAX_DIRECTORY_DEPTH)
     else:
+        # only update the cursor
         DBC.set_delta_cursor(user_id, cursor)
         tree = DBC.read(session['user_id'], MAX_DIRECTORY_DEPTH)
 
@@ -206,18 +238,31 @@ def update_filetree():
 
     return result
 
+
+# builds a simple index table (dictionary) so we have O(1) access to our
+# metadata for some file by knowing its lowercase path
+# for actual logic, see build_index_table_r
+
+# returns a dictionary, where keys are lowercase filepaths of all tree nodes
+# and the entries are the corresponding tree nodes
 def build_index_table(tree):
     tab = {}
     build_index_table_r(tree, tab)
     return tab
 
+# builds a simple index table (dictionary) so we have O(1) access to our
+# metadata for some file by knowing its lowercase path
+
+# returns nothing, but the parameter tab is modified
 def build_index_table_r(tree, tab):
     tab[tree['path'].lower()] = tree
     if tree['is_dir'] and tree['children'] is not None:
         for node in tree['children']:
             build_index_table_r(node, tab)
 
-# adds parent folders to the in-memory table, if necessary
+# recursively adds parent folders to the index table, if they do not already
+# exist
+
 # returns the parent folder we just added
 def add_parent_folders(lowercase_path, preserved_path, tab):
     if dirname(lowercase_path) is not lowercase_path: # while we haven't reached the root (/)
@@ -237,13 +282,18 @@ def add_parent_folders(lowercase_path, preserved_path, tab):
         return tab['/']
 
 # adjusts folder sizes all to way up to the root directory
-# in the in-memory table
+# in the index table
+
+# returns nothing, but the entries in tab are modified
 def adjust_parent_folder_size(parent_path, delta, tab):
     tab[parent_path]['size'] += delta
     # recursively adjust parent sizes until we reach root (/)
     if dirname(parent_path) is not parent_path:
         adjust_parent_folder_size(dirname(parent_path), delta, tab)
 
+# applies delta entries to our in memory tree according to Dropbox delta/ specs
+
+# returns nothing, but the entries in tab are modified
 def process_delta_entries_in_memory(entries, tab):
     for entry in entries:
         [lowercase_path, metadata] = entry
@@ -301,11 +351,12 @@ def process_delta_entries_in_memory(entries, tab):
                     tab[lowercase_path] = node
                     adjust_parent_folder_size(dirname(lowercase_path), node['size'], tab)
 
-# crawls all deltas for the given client. It starts from the beginning
+# crawls all deltas for the given client starting from the beginning (IE with a None cursor)
 # The raison d'etre of crawl_all_deltas is to apply responses from the delta()
 # call in memory without touching the database until the very end
+# for delta logic, see process_delta_entries_in_memory()
 
-# returns tuple of: root of the file tree, updated cursor
+# returns tuple: root of the final file tree, updated cursor
 def crawl_all_deltas(client):
     metadata = client.metadata('/')
 
@@ -342,6 +393,7 @@ def crawl_all_deltas(client):
 
     return tab['/'], cursor
 
+# self-explanatory :)
 def get_quota_usage(client):
     account = client.account_info()
     used = float(account['quota_info']['normal']) + float(account['quota_info']['shared'])
