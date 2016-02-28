@@ -75,7 +75,7 @@ def user_exists(user_id):
 
 # if we have a local cache for the user (identified by user_id),
 # return the cache, otherwise return None
-def read(user_id, maxdepth):
+def read(user_id, maxdepth = None):
     try:
         con = connect()
         cur = con.cursor()
@@ -85,8 +85,12 @@ def read(user_id, maxdepth):
             return None
         else:
             root_id, = result
-            cur.execute("""SELECT * FROM Layout
-                           WHERE root_id = %s AND path_depth < %s""", (root_id, maxdepth))
+            if not maxdepth:
+                cur.execute("""SELECT * FROM Layout
+                               WHERE root_id = %s""", (root_id,))
+            else:
+                cur.execute("""SELECT * FROM Layout
+                               WHERE root_id = %s AND path_depth < %s""", (root_id, maxdepth))
             root = treeify(cur.fetchall())
             root['name'] = '/'
             return root
@@ -100,7 +104,8 @@ def read(user_id, maxdepth):
 
 # treeifies the db cache
 def treeify(rows):
-    return treeify_h(rows, {})
+    tab = {}
+    return treeify_h(rows, tab)
 
 # two passes: builds disconnected nodes first, then constructs the
 # tree structure given the disconnected nodes
@@ -299,6 +304,37 @@ def store(user_id, file_tree, cursor):
     finally:
         if con:
             con.close()
+
+# overwrites the filetree for a given user (which must exist)
+def overwrite(user_id, file_tree, cursor):
+    try:
+        con = connect()
+        cur = con.cursor()
+
+        cur.execute("""SELECT root_id FROM Users WHERE user_id = %s""", (user_id,))
+        
+        # assumes we can always unwrap the result; IE: there must exist an entry with the given user_id
+        root_id, = cur.fetchone()
+
+        # delete everything
+        cur.execute("""DELETE FROM Layout WHERE root_id = %s""", (root_id,))
+
+        # write new tree to Layout table and update the new root_id
+        root_id = store_tree(cur, file_tree)
+
+        # write to user table
+        cur.execute("""UPDATE Users SET root_id = %s, delta_cursor = %s WHERE user_id = %s""", (root_id, cursor, user_id))
+
+        con.commit()
+
+    except mdb.Error, e:
+        print "Error %d: %s" % (e.args[0],e.args[1])
+        con.rollback()
+        sys.exit(1)
+    finally:
+        if con:
+            con.close()
+
 
 # stores the root of the tree into the layout and file table (if applicable), and returns
 # the id of the root entry in the layout table

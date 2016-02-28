@@ -107,10 +107,7 @@ def get_filetree():
     cursor = None
     if DBC.user_exists(user_id):
         result = update_filetree()
-        if result['changed']:
-            cached_tree = result['tree']
-        else:
-            cached_tree = DBC.read(user_id, MAX_DIRECTORY_DEPTH)
+        cached_tree = result['tree']
         cursor = result['cursor']
     else:
         tree, cursor = crawl_all_deltas(client)
@@ -142,6 +139,8 @@ def update_filetree_json():
         
     return jsonify(result)
 
+DELTA_DO_WORK_IN_MEMORY_THRESHOLD = 100
+
 def update_filetree():
     if 'access_token' not in session:
         abort(400)
@@ -152,10 +151,15 @@ def update_filetree():
     cursor = DBC.get_delta_cursor(user_id)
     changed = False
 
+    # if we do work in memory, keep a flag so
+    # we know to consolidate the work we did
+    # in memory and save it to the DB
+    do_work_in_memory = False
+    memcache = { 'tree': None
+               , 'tab' : None }
+
     while has_more:
         delta = client.delta(cursor)
-        has_more = delta['has_more']
-        cursor = delta['cursor']
 
         if delta['reset'] is True:
             DBC.clear(user_id)
@@ -163,27 +167,144 @@ def update_filetree():
         if len(delta['entries']) > 0:
             changed = True
 
-        print "%s entries in delta" % len(delta['entries'])
-        for entry in delta['entries']:
-            [path, metadata] = entry
-            if metadata is None:
-                # print "processed a deletion entry"
-                DBC.delete_path(user_id, path)
-            else:
-                # print "processed an update entry"
-                DBC.update_path(user_id, metadata['path'], metadata)
+        entries = delta['entries']
+        
+        if do_work_in_memory or len(entries) > DELTA_DO_WORK_IN_MEMORY_THRESHOLD:
+            do_work_in_memory = True
+            if memcache['tree'] is None:
+                memcache['tree'] = DBC.read(user_id)
+                memcache['tab'] = build_index_table(memcache['tree'])
+            process_delta_entries_in_memory(entries, memcache['tab'])
+            # print "processed %s entries in memory, deferring DB write..." % len(entries)
+        else:
+            for entry in entries:
+                [path, metadata] = entry
+                if metadata is None:
+                    # print "processed a deletion entry"
+                    DBC.delete_path(user_id, path)
+                else:
+                    # print "processed an update entry"
+                    DBC.update_path(user_id, metadata['path'], metadata)
+            # print "processed %s entries by directly updating DB" % len(entries)
 
-    DBC.set_delta_cursor(user_id, cursor)
+        has_more = delta['has_more']
+        cursor = delta['cursor']
+
+    # set_trace()
+    tree = None
+    if do_work_in_memory:
+        # write our in-memory tree into the DB
+        DBC.overwrite(user_id, memcache['tree'], cursor)
+        tree = prune(memcache['tree'], MAX_DIRECTORY_DEPTH)
+    else:
+        DBC.set_delta_cursor(user_id, cursor)
+        tree = DBC.read(session['user_id'], MAX_DIRECTORY_DEPTH)
 
     result = { 'changed': changed
-             , 'tree'   : DBC.read(session['user_id'], MAX_DIRECTORY_DEPTH)
-             , 'cursor' : cursor }
+             , 'cursor' : cursor
+             , 'tree'   : tree }
 
     return result
-    
-# crawls all deltas for the given client starting from
-# the beginning. Do this in memory using a dictionary
-# and write the results into the database at the end
+
+def build_index_table(tree):
+    tab = {}
+    build_index_table_r(tree, tab)
+    return tab
+
+def build_index_table_r(tree, tab):
+    tab[tree['path'].lower()] = tree
+    if tree['is_dir'] and tree['children'] is not None:
+        for node in tree['children']:
+            build_index_table_r(node, tab)
+
+# adds parent folders to the in-memory table, if necessary
+# returns the parent folder we just added
+def add_parent_folders(lowercase_path, preserved_path, tab):
+    if dirname(lowercase_path) is not lowercase_path: # while we haven't reached the root (/)
+        if lowercase_path in tab:
+            return tab[lowercase_path]
+        else:
+            parent = add_parent_folders(dirname(lowercase_path), dirname(preserved_path), tab)
+            fold = { 'name': basename(preserved_path)
+                   , 'is_dir': True
+                   , 'path': preserved_path
+                   , 'size': 0
+                   , 'children' : [] }
+            tab[lowercase_path] = fold
+            parent['children'].append(fold)
+            return fold
+    else:
+        return tab['/']
+
+# adjusts folder sizes all to way up to the root directory
+# in the in-memory table
+def adjust_parent_folder_size(parent_path, delta, tab):
+    tab[parent_path]['size'] += delta
+    # recursively adjust parent sizes until we reach root (/)
+    if dirname(parent_path) is not parent_path:
+        adjust_parent_folder_size(dirname(parent_path), delta, tab)
+
+def process_delta_entries_in_memory(entries, tab):
+    for entry in entries:
+        [lowercase_path, metadata] = entry
+
+        if metadata is None:
+            deleted = tab.pop( lowercase_path, None )
+            d = lowercase_path + '/'
+            for p in tab.keys():
+                if p.startswith( d ):
+                    del tab[p]
+            if deleted is not None:
+                adjust_parent_folder_size(dirname(lowercase_path), -deleted['size'], tab)
+        else:
+            parent = add_parent_folders(dirname(lowercase_path), dirname(metadata['path']), tab)
+
+            node = { 'name': basename(metadata['path'])
+                   , 'is_dir': metadata['is_dir']
+                   , 'path': metadata['path']
+                   , 'size': metadata['bytes'] }
+
+            if node['is_dir']:
+                if lowercase_path in tab:
+                    if tab[lowercase_path]['is_dir']:
+                        # just copy the metadata that (potentially) changed
+                        tab[lowercase_path]['name'] = node['name']
+                        tab[lowercase_path]['path'] = node['path']
+                    else:
+                        # replace the file with me
+                        adjust_parent_folder_size(dirname(lowercase_path), -tab[lowercase_path]['size'], tab)
+                        tab[lowercase_path]['name'] = node['name']
+                        tab[lowercase_path]['is_dir'] = True
+                        tab[lowercase_path]['size'] = 0
+                        tab[lowercase_path]['path'] = node['path']
+                        tab[lowercase_path]['children'] = []
+                else:
+                    # add me to the tree and table
+                    # we have a size of 0 so no need to adjust parent folder size
+                    parent['children'].append(node)
+                    tab[lowercase_path] = node
+                    tab[lowercase_path]['children'] = []
+            else: # we're a file
+                if lowercase_path in tab:
+                    # replace whatever existed at path with me
+                    # TODO we only need one call to adjust_parent_folder_size here
+                    adjust_parent_folder_size(dirname(lowercase_path), -tab[lowercase_path]['size'], tab)
+                    tab[lowercase_path]['name'] = node['name']
+                    tab[lowercase_path]['is_dir'] = False
+                    tab[lowercase_path]['size'] = node['size']
+                    tab[lowercase_path]['path'] = node['path']
+                    adjust_parent_folder_size(dirname(lowercase_path), node['size'], tab)
+                else:
+                    # add me to the tree and table
+                    parent['children'].append(node)
+                    tab[lowercase_path] = node
+                    adjust_parent_folder_size(dirname(lowercase_path), node['size'], tab)
+
+# crawls all deltas for the given client. It starts from the beginning
+# The raison d'etre of crawl_all_deltas is to apply responses from the delta()
+# call in memory without touching the database until the very end
+
+# returns tuple of: root of the file tree, updated cursor
 def crawl_all_deltas(client):
     metadata = client.metadata('/')
 
@@ -197,33 +318,9 @@ def crawl_all_deltas(client):
     tab = {}
     tab['/'] = root
 
-    # adds parent folders to the table, if necessary
-    def add_parent_folders(lowercase_path, preserved_path):
-        if dirname(lowercase_path) is not lowercase_path: # while we haven't reached the root (/)
-            if lowercase_path in tab:
-                return tab[lowercase_path]
-            else:
-                parent = add_parent_folders(dirname(lowercase_path), dirname(preserved_path))
-                fold = { 'name': basename(preserved_path)
-                       , 'is_dir': True
-                       , 'path': preserved_path
-                       , 'size': 0
-                       , 'children' : [] }
-                tab[lowercase_path] = fold
-                parent['children'].append(fold)
-                return fold
-        else:
-            return tab['/']
-
-    def adjust_parent_folder_size(parent_path, delta):
-        tab[parent_path]['size'] += delta
-        # recursively adjust parent sizes until we reach root (/)
-        if dirname(parent_path) is not parent_path:
-            adjust_parent_folder_size(dirname(parent_path), delta)
-
     has_more = True
-    cursor = None
     changed = False
+    cursor = None
 
     while has_more:
         delta = client.delta(cursor)
@@ -240,59 +337,7 @@ def crawl_all_deltas(client):
             tab = {}
             tab['/'] = root
 
-        for entry in delta['entries']:
-            [lowercase_path, metadata] = entry
-
-            if metadata is None:
-                deleted = tab.pop( lowercase_path, None )
-                d = lowercase_path + '/'
-                for p in tab.keys():
-                    if p.startswith( d ):
-                        del tab[p]
-                if deleted is not None:
-                    adjust_parent_folder_size(dirname(lowercase_path), -deleted['size'])
-            else:
-                parent = add_parent_folders(dirname(lowercase_path), dirname(metadata['path']))
-
-                node = { 'name': basename(metadata['path'])
-                       , 'is_dir': metadata['is_dir']
-                       , 'path': metadata['path']
-                       , 'size': metadata['bytes'] }
-
-                if node['is_dir']:
-                    if lowercase_path in tab:
-                        if tab[lowercase_path]['is_dir']:
-                            # just copy the metadata that (potentially) changed
-                            tab[lowercase_path]['name'] = node['name']
-                            tab[lowercase_path]['path'] = node['path']
-                        else:
-                            # replace the file with me
-                            adjust_parent_folder_size(dirname(lowercase_path), -tab[lowercase_path]['size'])
-                            tab[lowercase_path]['name'] = node['name']
-                            tab[lowercase_path]['is_dir'] = True
-                            tab[lowercase_path]['size'] = 0
-                            tab[lowercase_path]['path'] = node['path']
-                            tab[lowercase_path]['children'] = []
-                    else:
-                        # add me to the tree and table
-                        # we have a size of 0 so no need to adjust parent folder size
-                        parent['children'].append(node)
-                        tab[lowercase_path] = node
-                        tab[lowercase_path]['children'] = []
-                else: # we're a file
-                    if lowercase_path in tab:
-                        # replace whatever existed at path with me
-                        adjust_parent_folder_size(dirname(lowercase_path), -tab[lowercase_path]['size'])
-                        tab[lowercase_path]['name'] = node['name']
-                        tab[lowercase_path]['is_dir'] = False
-                        tab[lowercase_path]['size'] = node['size']
-                        tab[lowercase_path]['path'] = node['path']
-                        adjust_parent_folder_size(dirname(lowercase_path), node['size'])
-                    else:
-                        # add me to the tree and table
-                        parent['children'].append(node)
-                        tab[lowercase_path] = node
-                        adjust_parent_folder_size(dirname(lowercase_path), node['size'])
+        process_delta_entries_in_memory(delta['entries'], tab)
 
     return tab['/'], cursor
 
