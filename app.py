@@ -255,7 +255,10 @@ def process_delta_entries_in_memory(entries, tab):
                 if p.startswith( d ):
                     del tab[p]
             if deleted is not None:
-                adjust_parent_folder_size(dirname(lowercase_path), -deleted['size'], tab)
+                parent = dirname(lowercase_path)
+                if tab[parent]:
+                    tab[parent]['children'].remove(deleted)
+                adjust_parent_folder_size(parent, -deleted['size'], tab)
         else:
             parent = add_parent_folders(dirname(lowercase_path), dirname(metadata['path']), tab)
 
@@ -287,13 +290,11 @@ def process_delta_entries_in_memory(entries, tab):
             else: # we're a file
                 if lowercase_path in tab:
                     # replace whatever existed at path with me
-                    # TODO we only need one call to adjust_parent_folder_size here
-                    adjust_parent_folder_size(dirname(lowercase_path), -tab[lowercase_path]['size'], tab)
                     tab[lowercase_path]['name'] = node['name']
                     tab[lowercase_path]['is_dir'] = False
                     tab[lowercase_path]['size'] = node['size']
                     tab[lowercase_path]['path'] = node['path']
-                    adjust_parent_folder_size(dirname(lowercase_path), node['size'], tab)
+                    adjust_parent_folder_size(dirname(lowercase_path), node['size'] - tab[lowercase_path]['size'], tab)
                 else:
                     # add me to the tree and table
                     parent['children'].append(node)
