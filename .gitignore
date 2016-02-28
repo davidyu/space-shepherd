@@ -4,6 +4,7 @@
 *.csr
 *.crt
 *.key
+*.org
 
 # always ignore thumbnail caches!
 *.DS_Store
